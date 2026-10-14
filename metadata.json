@@ -1,0 +1,6 @@
+{
+  "name": "Tactile",
+  "description": "Ultra-low latency Wi-Fi remote for LG webOS and Android TV",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
