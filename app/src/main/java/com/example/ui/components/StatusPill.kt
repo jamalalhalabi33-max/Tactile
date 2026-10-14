@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
@@ -43,7 +45,6 @@ import com.example.model.TvDevice
 import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.StatusConnecting
-import com.example.ui.theme.StatusDisconnected
 
 @Composable
 fun StatusPill(
@@ -53,9 +54,18 @@ fun StatusPill(
     modifier: Modifier = Modifier
 ) {
     val isDark = isSystemInDarkTheme()
+
+    val displayName = when {
+        device != null -> device.name
+        else -> "Search"
+    }
+
+    val isConnected = connectionState is ConnectionState.Connected
+    val isConnecting = connectionState is ConnectionState.Connecting || connectionState is ConnectionState.PairingRequired
+
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
+        initialValue = 0.4f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = FastOutSlowInEasing),
@@ -63,25 +73,6 @@ fun StatusPill(
         ),
         label = "dotAlpha"
     )
-
-    val (dotColor, dotAlpha) = when (connectionState) {
-        is ConnectionState.Connected -> Pair(AccentBlue, 1f)
-        is ConnectionState.Connecting, is ConnectionState.PairingRequired -> Pair(StatusConnecting, pulseAlpha)
-        is ConnectionState.Disconnected, is ConnectionState.Error -> Pair(StatusDisconnected, 1f)
-    }
-
-    val displayName = when {
-        device != null -> device.name
-        else -> "Choose TV"
-    }
-
-    val statusDesc = when (connectionState) {
-        is ConnectionState.Connected -> "Connected to $displayName"
-        is ConnectionState.Connecting -> "Connecting to $displayName"
-        is ConnectionState.PairingRequired -> "Pairing with $displayName"
-        is ConnectionState.Disconnected -> "Disconnected"
-        is ConnectionState.Error -> "Connection error"
-    }
 
     Box(
         modifier = modifier
@@ -96,32 +87,52 @@ fun StatusPill(
             .background(MaterialTheme.colorScheme.surface)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
-                else Modifier
+                else Modifier.border(1.dp, Color.Black.copy(alpha = 0.06f), CircleShape)
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = ripple(bounded = true),
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 18.dp)
             .testTag("status_pill")
             .semantics {
                 role = Role.Button
-                contentDescription = "$statusDesc. Tap to open devices list."
+                contentDescription = "$displayName. Tap to open devices list."
             },
         contentAlignment = Alignment.Center
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(dotColor.copy(alpha = dotAlpha))
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
+            if (device == null) {
+                // Clean search icon
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = null,
+                    tint = AccentBlue,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            } else if (isConnected) {
+                // Clean connected blue dot
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(AccentBlue)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+            } else if (isConnecting) {
+                // Subtle connecting pulse
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(StatusConnecting.copy(alpha = pulseAlpha))
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+            }
 
             Text(
                 text = displayName,

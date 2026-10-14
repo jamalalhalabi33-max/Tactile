@@ -110,7 +110,7 @@ private fun BackKey(
             .background(MaterialTheme.colorScheme.surface)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, shape)
-                else Modifier
+                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, shape)
             )
             .testTag("key_back")
             .semantics {
@@ -185,7 +185,7 @@ private fun VolumePill(
             .background(MaterialTheme.colorScheme.surface)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, shape)
-                else Modifier
+                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, shape)
             )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {

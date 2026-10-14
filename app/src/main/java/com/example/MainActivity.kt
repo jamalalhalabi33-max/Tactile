@@ -48,10 +48,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun enforceFullScreen() {
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
     override fun onResume() {
         super.onResume()
+        enforceFullScreen()
         if (::remoteManager.isInitialized) {
             remoteManager.onResume()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enforceFullScreen()
         }
     }
 

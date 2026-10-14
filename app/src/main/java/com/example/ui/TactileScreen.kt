@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -25,8 +26,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.example.discovery.TvDiscoveryManager
 import com.example.model.Key
 import com.example.remote.RemoteManager
@@ -43,27 +48,37 @@ fun TactileScreen(
     discoveryManager: TvDiscoveryManager,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val currentDevice by remoteManager.currentDevice.collectAsState()
     val connectionState by remoteManager.connectionState.collectAsState()
     val savedDevices by remoteManager.storage.savedDevicesFlow.collectAsState(initial = emptyList())
 
     var showDevicesSheet by remember { mutableStateOf(false) }
 
+    fun keepFullScreen() {
+        (context as? Activity)?.window?.let { window ->
+            val controller = WindowCompat.getInsetsController(window, window.decorView)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
     // Auto-open devices sheet if no TV saved after initial check
     LaunchedEffect(savedDevices) {
         delay(400)
         if (savedDevices.isEmpty() && currentDevice == null) {
             showDevicesSheet = true
+            keepFullScreen()
         }
     }
 
     // Launch cosmetic intro (<300 ms lift 12dp + fade with 30 ms stagger, never delaying input)
     val pillAlpha = remember { Animatable(0f) }
     val pillY = remember { Animatable(12f) }
-    val upperAlpha = remember { Animatable(0f) }
-    val upperY = remember { Animatable(12f) }
     val dpadAlpha = remember { Animatable(0f) }
     val dpadY = remember { Animatable(12f) }
+    val lowerAlpha = remember { Animatable(0f) }
+    val lowerY = remember { Animatable(12f) }
 
     LaunchedEffect(Unit) {
         launch {
@@ -75,18 +90,18 @@ fun TactileScreen(
 
         delay(30)
         launch {
-            upperAlpha.animateTo(1f, tween(200))
-        }
-        launch {
-            upperY.animateTo(0f, tween(200))
-        }
-
-        delay(30)
-        launch {
             dpadAlpha.animateTo(1f, tween(200))
         }
         launch {
             dpadY.animateTo(0f, tween(200))
+        }
+
+        delay(30)
+        launch {
+            lowerAlpha.animateTo(1f, tween(200))
+        }
+        launch {
+            lowerY.animateTo(0f, tween(200))
         }
     }
 
@@ -101,9 +116,9 @@ fun TactileScreen(
         val screenHeight = maxHeight
         val screenWidth = maxWidth
 
-        // Calculate dynamic dimensions respecting small and large screens
+        // Calculate dynamic dimensions
         val availableHeight = screenHeight - statusBarPadding - 24.dp
-        val upperBlockHeight = (availableHeight * 0.28f).coerceIn(160.dp, 240.dp)
+        val lowerBlockHeight = (availableHeight * 0.28f).coerceIn(150.dp, 230.dp)
         val dpadDiameter = (screenWidth - 32.dp).coerceAtMost(availableHeight * 0.54f).coerceAtLeast(240.dp)
 
         Column(
@@ -117,7 +132,7 @@ fun TactileScreen(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top: Status Pill (44dp, centered)
+            // Top: Status Pill ("Search" / TV name)
             Box(
                 modifier = Modifier
                     .graphicsLayer {
@@ -128,31 +143,16 @@ fun TactileScreen(
                 StatusPill(
                     device = currentDevice,
                     connectionState = connectionState,
-                    onClick = { showDevicesSheet = true }
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(0.12f))
-
-            // Upper block (~28% of height): Back on left, Volume on right
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(upperBlockHeight)
-                    .graphicsLayer {
-                        alpha = upperAlpha.value
-                        translationY = upperY.value.dp.toPx()
+                    onClick = {
+                        keepFullScreen()
+                        showDevicesSheet = true
                     }
-            ) {
-                UpperBlock(
-                    onSendKey = { key -> remoteManager.sendKey(key) },
-                    modifier = Modifier.fillMaxSize()
                 )
             }
 
-            Spacer(modifier = Modifier.weight(0.16f))
+            Spacer(modifier = Modifier.weight(0.10f))
 
-            // Lower block (~55%): D-pad disc in thumb zone
+            // D-pad Disc in TOP position (natural thumb placement)
             Box(
                 modifier = Modifier
                     .graphicsLayer {
@@ -167,6 +167,24 @@ fun TactileScreen(
                 )
             }
 
+            Spacer(modifier = Modifier.weight(0.14f))
+
+            // Back Key & Volume Pill in DOWN position
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(lowerBlockHeight)
+                    .graphicsLayer {
+                        alpha = lowerAlpha.value
+                        translationY = lowerY.value.dp.toPx()
+                    }
+            ) {
+                UpperBlock(
+                    onSendKey = { key -> remoteManager.sendKey(key) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
             Spacer(modifier = Modifier.weight(0.08f))
         }
 
@@ -175,7 +193,10 @@ fun TactileScreen(
             DevicesSheet(
                 discoveryManager = discoveryManager,
                 remoteManager = remoteManager,
-                onDismiss = { showDevicesSheet = false }
+                onDismiss = {
+                    showDevicesSheet = false
+                    keepFullScreen()
+                }
             )
         }
     }

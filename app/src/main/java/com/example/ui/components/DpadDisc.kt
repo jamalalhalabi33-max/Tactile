@@ -91,7 +91,7 @@ fun DpadDisc(
             .background(MaterialTheme.colorScheme.surface)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
-                else Modifier
+                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, CircleShape)
             )
             .testTag("dpad_disc")
             .semantics {
