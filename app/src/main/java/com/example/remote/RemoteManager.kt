@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.model.ConnectionState
 import com.example.model.Key
+import com.example.model.KeyboardSession
 import com.example.model.TvBrand
 import com.example.model.TvDevice
 import com.example.storage.TvStorage
@@ -36,8 +37,12 @@ class RemoteManager(
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
+    private val _keyboardSession = MutableStateFlow(KeyboardSession())
+    val keyboardSession: StateFlow<KeyboardSession> = _keyboardSession.asStateFlow()
+
     private var activeController: TvController? = null
     private var controllerStateJob: Job? = null
+    private var keyboardJob: Job? = null
     private var autoReconnectJob: Job? = null
 
     // Dedicated key queue on tap path
@@ -68,13 +73,25 @@ class RemoteManager(
         }
     }
 
-    /**
-     * Non-blocking tap path entry:
-     * Pointer event -> Channel.trySend(key)
-     * No state update, network suspension, or blocking calls here!
-     */
     fun sendKey(key: Key): Boolean {
         return keyChannel.trySend(key).isSuccess
+    }
+
+    fun sendText(text: String) {
+        activeController?.sendText(text)
+    }
+
+    fun sendBackspace(count: Int = 1) {
+        activeController?.sendBackspace(count)
+    }
+
+    fun sendEnter() {
+        activeController?.sendEnter()
+    }
+
+    fun setKeyboardActive(active: Boolean) {
+        _keyboardSession.value = _keyboardSession.value.copy(isActive = active)
+        activeController?.setKeyboardActive(active)
     }
 
     private fun processKey(key: Key) {
@@ -84,7 +101,6 @@ class RemoteManager(
         if (controller != null && state is ConnectionState.Connected) {
             controller.send(key)
         } else {
-            // Buffer in offline queue
             synchronized(offlineLock) {
                 val now = System.currentTimeMillis()
                 if (offlineQueue.size >= 3) {
@@ -102,7 +118,9 @@ class RemoteManager(
 
         activeController?.disconnect()
         controllerStateJob?.cancel()
+        keyboardJob?.cancel()
         autoReconnectJob?.cancel()
+        _keyboardSession.value = KeyboardSession(isActive = false)
 
         _currentDevice.value = device
         scope.launch {
@@ -132,11 +150,17 @@ class RemoteManager(
                 _connectionState.value = state
 
                 if (state is ConnectionState.Connected && prev !is ConnectionState.Connected) {
-                    // Reset backoff & flush unexpired offline events
                     flushOfflineQueue()
                 } else if (state is ConnectionState.Disconnected) {
+                    _keyboardSession.value = KeyboardSession(isActive = false)
                     startAutoReconnect()
                 }
+            }
+        }
+
+        keyboardJob = scope.launch {
+            controller.keyboardSession.collect { session ->
+                _keyboardSession.value = session
             }
         }
 
@@ -197,9 +221,11 @@ class RemoteManager(
     fun disconnect() {
         autoReconnectJob?.cancel()
         controllerStateJob?.cancel()
+        keyboardJob?.cancel()
         activeController?.disconnect()
         activeController = null
         _connectionState.value = ConnectionState.Disconnected
+        _keyboardSession.value = KeyboardSession(isActive = false)
     }
 
     companion object {

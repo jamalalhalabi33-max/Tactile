@@ -3,6 +3,7 @@ package com.example.tv
 import android.util.Log
 import com.example.model.ConnectionState
 import com.example.model.Key
+import com.example.model.KeyboardSession
 import com.example.model.TvBrand
 import com.example.model.TvDevice
 import com.example.storage.TvStorage
@@ -20,6 +21,7 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
+import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 
@@ -31,6 +33,12 @@ class AndroidTvController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    private val _keyboardSession = MutableStateFlow(KeyboardSession())
+    override val keyboardSession: StateFlow<KeyboardSession> = _keyboardSession.asStateFlow()
+
+    private val imeCounter = AtomicInteger(1)
+    private val fieldCounter = AtomicInteger(1)
 
     private var commandSocket: SSLSocket? = null
     private var commandOut: OutputStream? = null
@@ -98,13 +106,13 @@ class AndroidTvController(
                 if (isActive) {
                     Log.w(TAG, "Command stream closed: ${e.message}")
                     _connectionState.value = ConnectionState.Disconnected
+                    _keyboardSession.value = KeyboardSession(isActive = false)
                 }
             }
         }
     }
 
     private fun handleCommandFrame(frame: ByteArray, out: OutputStream) {
-        // Parse protobuf tags to detect ping request (field 8)
         var i = 0
         while (i < frame.size) {
             val tag = frame[i].toInt() and 0xFF
@@ -136,17 +144,170 @@ class AndroidTvController(
                     if (len >= 2 && (frame[i].toInt() and 0x07) == 0) {
                         val1 = frame[i + 1].toInt()
                     }
-                    // Immediately respond with ping response
                     val resp = ProtobufWire.encodeRemotePingResponse(val1)
                     synchronized(out) {
                         ProtobufWire.writeFramedMessage(out, resp)
                     }
+                } else if (fieldNum == 21) { // remote_ime_batch_edit
+                    val data = frame.copyOfRange(i, i + len)
+                    parseImeBatchEdit(data)
+                } else if (fieldNum == 22) { // remote_ime_show_request
+                    val imeData = frame.copyOfRange(i, i + len)
+                    parseImeShowRequest(imeData)
                 }
                 i += len
             } else {
                 break
             }
         }
+    }
+
+    private fun parseImeBatchEdit(data: ByteArray) {
+        var idx = 0
+        while (idx < data.size) {
+            val tag = data[idx++].toInt() and 0xFF
+            val fieldNum = tag ushr 3
+            val wireType = tag and 0x07
+            if (wireType == 0) {
+                var v = 0L
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    v = v or ((b and 0x7F).toLong() shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (fieldNum == 1) imeCounter.set(v.toInt())
+                if (fieldNum == 2) fieldCounter.set(v.toInt())
+            } else if (wireType == 2) {
+                var l = 0
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    l = l or ((b and 0x7F) shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                idx += l
+            } else {
+                break
+            }
+        }
+    }
+
+    private fun parseImeShowRequest(data: ByteArray) {
+        var text = ""
+        var label = "Android TV Keyboard"
+        var idx = 0
+        while (idx < data.size) {
+            val tag = data[idx++].toInt() and 0xFF
+            val fieldNum = tag ushr 3
+            val wireType = tag and 0x07
+            if (wireType == 2) {
+                var len = 0
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    len = len or ((b and 0x7F) shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (fieldNum == 2) { // remote_text_field_status
+                    val statusBytes = data.copyOfRange(idx, idx + len)
+                    parseTextFieldStatus(statusBytes)
+                    return
+                }
+                idx += len
+            } else if (wireType == 0) {
+                while (idx < data.size && (data[idx++].toInt() and 0x80) != 0) {}
+            } else {
+                break
+            }
+        }
+        _keyboardSession.value = KeyboardSession(
+            isActive = true,
+            initialText = text,
+            label = label
+        )
+    }
+
+    private fun parseTextFieldStatus(data: ByteArray) {
+        var text = ""
+        var label = "Android TV Keyboard"
+        var idx = 0
+        while (idx < data.size) {
+            val tag = data[idx++].toInt() and 0xFF
+            val fieldNum = tag ushr 3
+            val wireType = tag and 0x07
+            if (wireType == 0) {
+                var v = 0L
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    v = v or ((b and 0x7F).toLong() shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (fieldNum == 1) { // counter_field
+                    fieldCounter.set(v.toInt())
+                }
+            } else if (wireType == 2) {
+                var len = 0
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    len = len or ((b and 0x7F) shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (fieldNum == 2 && idx + len <= data.size) { // value
+                    text = String(data, idx, len, Charsets.UTF_8)
+                } else if (fieldNum == 6 && idx + len <= data.size) { // label
+                    label = String(data, idx, len, Charsets.UTF_8).ifEmpty { "Android TV Keyboard" }
+                }
+                idx += len
+            } else {
+                break
+            }
+        }
+
+        _keyboardSession.value = KeyboardSession(
+            isActive = true,
+            initialText = text,
+            label = label
+        )
+    }
+
+    private fun extractStringFromProto(data: ByteArray): String {
+        var idx = 0
+        while (idx < data.size) {
+            val tag = data[idx].toInt() and 0xFF
+            val wireType = tag and 0x07
+            idx++
+            if (wireType == 2) { // string or message
+                var len = 0
+                var shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    len = len or ((b and 0x7F) shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (len in 1..256 && idx + len <= data.size) {
+                    val candidate = String(data, idx, len, Charsets.UTF_8)
+                    // If candidate contains readable chars, return it
+                    if (candidate.all { !it.isISOControl() }) {
+                        return candidate
+                    }
+                }
+                idx += len
+            } else if (wireType == 0) {
+                while (idx < data.size && (data[idx++].toInt() and 0x80) != 0) {}
+            } else {
+                break
+            }
+        }
+        return ""
     }
 
     private fun startPairing() {
@@ -207,13 +368,11 @@ class AndroidTvController(
             try {
                 val cleanCode = code.trim().uppercase()
                 val codeBytes = if (cleanCode.length == 6 && cleanCode.matches(Regex("[0-9A-F]{6}"))) {
-                    // 6 hex characters = 3 bytes
                     cleanCode.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
                 } else {
                     cleanCode.toByteArray(Charsets.UTF_8)
                 }
 
-                // Compute pairing secret SHA-256(client_cert + server_cert + code)
                 val digest = MessageDigest.getInstance("SHA-256")
                 clientCert?.encoded?.let { digest.update(it) }
                 serverCert?.encoded?.let { digest.update(it) }
@@ -226,13 +385,11 @@ class AndroidTvController(
                 val response = ProtobufWire.readFramedMessage(input)
                 Log.d(TAG, "Pairing secret response received: size=${response.size}")
 
-                // Close pairing socket
                 try {
                     pairingSocket?.close()
                 } catch (_: Exception) {}
                 pairingSocket = null
 
-                // Now connect to command channel port 6466
                 _connectionState.value = ConnectionState.Connecting
                 val sslCtx = sslContext ?: AndroidTvCertificateHelper.getOrCreateSslContext(storage).first
                 tryConnectCommandChannel(sslCtx)
@@ -257,7 +414,6 @@ class AndroidTvController(
             Key.MUTE -> 164    // KEYCODE_VOLUME_MUTE
         }
 
-        // Direction: 3 = SHORT
         val msg = ProtobufWire.encodeRemoteKeyInject(keyCode, direction = 3)
         synchronized(out) {
             try {
@@ -269,6 +425,55 @@ class AndroidTvController(
         }
     }
 
+    override fun sendText(text: String) {
+        val out = commandOut ?: return
+        val batchEdit = ProtobufWire.encodeRemoteImeBatchEdit(
+            text = text,
+            imeCounter = imeCounter.getAndIncrement(),
+            fieldCounter = fieldCounter.get()
+        )
+        synchronized(out) {
+            try {
+                ProtobufWire.writeFramedMessage(out, batchEdit)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error sending IME text: ${e.message}")
+            }
+        }
+    }
+
+    override fun sendBackspace(count: Int) {
+        val out = commandOut ?: return
+        if (count <= 0) return
+        // KEYCODE_DEL = 67
+        synchronized(out) {
+            try {
+                repeat(count) {
+                    val msg = ProtobufWire.encodeRemoteKeyInject(keyCode = 67, direction = 3)
+                    ProtobufWire.writeFramedMessage(out, msg)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error sending backspace: ${e.message}")
+            }
+        }
+    }
+
+    override fun sendEnter() {
+        val out = commandOut ?: return
+        // KEYCODE_ENTER = 66
+        val msg = ProtobufWire.encodeRemoteKeyInject(keyCode = 66, direction = 3)
+        synchronized(out) {
+            try {
+                ProtobufWire.writeFramedMessage(out, msg)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error sending enter: ${e.message}")
+            }
+        }
+    }
+
+    override fun setKeyboardActive(active: Boolean) {
+        _keyboardSession.value = _keyboardSession.value.copy(isActive = active)
+    }
+
     override fun disconnect() {
         readJob?.cancel()
         try {
@@ -278,6 +483,7 @@ class AndroidTvController(
         commandSocket = null
         pairingSocket = null
         _connectionState.value = ConnectionState.Disconnected
+        _keyboardSession.value = KeyboardSession(isActive = false)
     }
 
     companion object {

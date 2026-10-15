@@ -265,7 +265,7 @@ fun DpadDisc(
             Icon(
                 imageVector = Icons.Rounded.KeyboardArrowUp,
                 contentDescription = "Up",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -283,7 +283,7 @@ fun DpadDisc(
             Icon(
                 imageVector = Icons.Rounded.KeyboardArrowDown,
                 contentDescription = "Down",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -301,7 +301,7 @@ fun DpadDisc(
             Icon(
                 imageVector = Icons.Rounded.KeyboardArrowLeft,
                 contentDescription = "Left",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 modifier = Modifier.size(36.dp)
             )
         }
@@ -319,7 +319,7 @@ fun DpadDisc(
             Icon(
                 imageVector = Icons.Rounded.KeyboardArrowRight,
                 contentDescription = "Right",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                 modifier = Modifier.size(36.dp)
             )
         }

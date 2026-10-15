@@ -4,9 +4,15 @@ import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -14,8 +20,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,20 +37,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.discovery.TvDiscoveryManager
+import com.example.model.ConnectionState
 import com.example.model.Key
 import com.example.remote.RemoteManager
 import com.example.ui.components.DevicesSheet
 import com.example.ui.components.DpadDisc
 import com.example.ui.components.StatusPill
+import com.example.ui.components.TvKeyboardInput
 import com.example.ui.components.UpperBlock
+import com.example.ui.theme.AccentBlue
+import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.LightBorder
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -132,13 +156,18 @@ fun TactileScreen(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top: Status Pill ("Search" / TV name)
-            Box(
+            // Top Header: Status Pill ("Search" / TV name) and Manual Keyboard Fallback Button
+            val isDark = isSystemInDarkTheme()
+            val keyboardSession by remoteManager.keyboardSession.collectAsState()
+
+            Row(
                 modifier = Modifier
                     .graphicsLayer {
                         alpha = pillAlpha.value
                         translationY = pillY.value.dp.toPx()
-                    }
+                    },
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 StatusPill(
                     device = currentDevice,
@@ -148,6 +177,45 @@ fun TactileScreen(
                         showDevicesSheet = true
                     }
                 )
+
+                if (connectionState is ConnectionState.Connected) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(
+                                elevation = if (!isDark) 4.dp else 0.dp,
+                                shape = CircleShape,
+                                ambientColor = Color.Black.copy(alpha = 0.05f),
+                                spotColor = Color.Black.copy(alpha = 0.08f)
+                            )
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .then(
+                                if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
+                                else Modifier.border(1.dp, LightBorder, CircleShape)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = ripple(bounded = true),
+                                onClick = {
+                                    remoteManager.setKeyboardActive(!keyboardSession.isActive)
+                                }
+                            )
+                            .testTag("manual_keyboard_fallback_button")
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = if (keyboardSession.isActive) "Hide keyboard" else "Show keyboard"
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Keyboard,
+                            contentDescription = null,
+                            tint = if (keyboardSession.isActive) AccentBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.weight(0.10f))
@@ -199,5 +267,11 @@ fun TactileScreen(
                 }
             )
         }
+
+        // Automatic & manual TV Keyboard Input Bar
+        TvKeyboardInput(
+            remoteManager = remoteManager,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }

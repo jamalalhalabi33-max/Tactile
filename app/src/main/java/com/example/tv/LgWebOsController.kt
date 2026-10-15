@@ -3,6 +3,7 @@ package com.example.tv
 import android.util.Log
 import com.example.model.ConnectionState
 import com.example.model.Key
+import com.example.model.KeyboardSession
 import com.example.model.TvBrand
 import com.example.model.TvDevice
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,9 @@ class LgWebOsController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
+
+    private val _keyboardSession = MutableStateFlow(KeyboardSession())
+    override val keyboardSession: StateFlow<KeyboardSession> = _keyboardSession.asStateFlow()
 
     private val requestId = AtomicInteger(1)
     private var commandSocket: WebSocket? = null
@@ -82,12 +86,12 @@ class LgWebOsController(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "Secure port 3001 failed: ${t.message}. Trying port 3000 fallback.")
-                // Try port 3000 fallback
                 tryFallbackPort3000()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 _connectionState.value = ConnectionState.Disconnected
+                _keyboardSession.value = KeyboardSession(isActive = false)
             }
         })
     }
@@ -107,10 +111,12 @@ class LgWebOsController(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 _connectionState.value = ConnectionState.Error("Could not connect to LG TV: ${t.message ?: "Unreachable"}")
+                _keyboardSession.value = KeyboardSession(isActive = false)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 _connectionState.value = ConnectionState.Disconnected
+                _keyboardSession.value = KeyboardSession(isActive = false)
             }
         })
     }
@@ -175,6 +181,11 @@ class LgWebOsController(
                             connectPointerSocket(socketPath)
                         }
                     }
+
+                    // Handle IME keyboard subscription responses
+                    if (id == "sub_keyboard" || id.startsWith("sub_ime")) {
+                        handleImePayload(payload)
+                    }
                 }
                 "registered" -> {
                     val payload = json.optJSONObject("payload")
@@ -186,11 +197,12 @@ class LgWebOsController(
                     _connectionState.value = ConnectionState.Connected
                     // Request pointer input socket immediately
                     requestPointerSocket(webSocket)
+                    // Subscribe to TV keyboard IME events immediately
+                    subscribeKeyboardIme(webSocket)
                 }
                 "error" -> {
                     val error = json.optString("error", "Unknown error")
                     if (error.contains("403") || error.contains("cancelled")) {
-                        // Pairing prompt cancelled or client key expired
                         currentClientKey = null
                         _connectionState.value = ConnectionState.PairingRequired(
                             prompt = "Pairing was rejected or expired. Please accept on your TV.",
@@ -203,6 +215,38 @@ class LgWebOsController(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing webOS message", e)
+        }
+    }
+
+    private fun subscribeKeyboardIme(webSocket: WebSocket) {
+        val req = JSONObject().apply {
+            put("type", "subscribe")
+            put("id", "sub_keyboard")
+            put("uri", "ssap://com.webos.service.ime/registerRemoteKeyboard")
+        }
+        webSocket.send(req.toString())
+    }
+
+    private fun handleImePayload(payload: JSONObject?) {
+        if (payload == null) return
+        val currentWidget = payload.optJSONObject("currentWidget")
+        val isFocused = when {
+            currentWidget != null -> currentWidget.optBoolean("focus", false)
+            payload.has("focused") -> payload.optBoolean("focused", false)
+            payload.has("focus") -> payload.optBoolean("focus", false)
+            else -> false
+        }
+
+        val initialText = currentWidget?.optString("value", "") ?: payload.optString("value", "")
+
+        _keyboardSession.value = if (isFocused) {
+            KeyboardSession(
+                isActive = true,
+                initialText = initialText,
+                label = "LG TV Keyboard"
+            )
+        } else {
+            KeyboardSession(isActive = false)
         }
     }
 
@@ -244,11 +288,7 @@ class LgWebOsController(
                     val frame = "type:button\nname:$btnName\n\n"
                     val sent = pointerSocket?.send(frame) ?: false
                     if (!sent) {
-                        // Fallback to SSAP command if pointer socket is not yet open
-                        val ssapKey = when (key) {
-                            Key.UP -> "ssap://com.webos.service.tv.display/set3DStatus" // or input socket
-                            else -> null
-                        }
+                        // Fallback
                     }
                 }
                 Key.VOLUME_UP -> {
@@ -265,6 +305,52 @@ class LgWebOsController(
                     )
                 }
             }
+        }
+    }
+
+    override fun sendText(text: String) {
+        if (text.isEmpty()) return
+        scope.launch {
+            sendSsapRequest(
+                uri = "ssap://com.webos.service.ime/insertText",
+                payload = JSONObject().apply {
+                    put("text", text)
+                    put("replace", 0)
+                }
+            )
+        }
+    }
+
+    override fun sendBackspace(count: Int) {
+        if (count <= 0) return
+        scope.launch {
+            sendSsapRequest(
+                uri = "ssap://com.webos.service.ime/deleteCharacters",
+                payload = JSONObject().apply {
+                    put("count", count)
+                }
+            )
+        }
+    }
+
+    override fun sendEnter() {
+        scope.launch {
+            sendSsapRequest(
+                uri = "ssap://com.webos.service.ime/sendEnterKey",
+                payload = JSONObject()
+            )
+        }
+    }
+
+    override fun setKeyboardActive(active: Boolean) {
+        _keyboardSession.value = _keyboardSession.value.copy(isActive = active)
+        if (!active) {
+            sendSsapRequest(
+                uri = "ssap://com.webos.service.ime/setKeyboardActive",
+                payload = JSONObject().apply {
+                    put("active", false)
+                }
+            )
         }
     }
 
@@ -287,6 +373,7 @@ class LgWebOsController(
             commandSocket?.close(1000, "Disconnect")
         } catch (_: Exception) {}
         _connectionState.value = ConnectionState.Disconnected
+        _keyboardSession.value = KeyboardSession(isActive = false)
     }
 
     companion object {

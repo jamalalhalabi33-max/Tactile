@@ -90,6 +90,27 @@ object ProtobufWire {
         return msgBos.toByteArray()
     }
 
+    fun encodeRemoteImeBatchEdit(text: String, imeCounter: Int = 1, fieldCounter: Int = 1): ByteArray {
+        val paramVal = (text.length - 1).coerceAtLeast(0)
+        val imeObjBos = ByteArrayOutputStream()
+        writeInt32Field(imeObjBos, 1, paramVal) // start = 1
+        writeInt32Field(imeObjBos, 2, paramVal) // end = 2
+        writeStringField(imeObjBos, 3, text)     // value = 3
+
+        val editInfoBos = ByteArrayOutputStream()
+        writeInt32Field(editInfoBos, 1, 1) // insert = 1
+        writeMessageField(editInfoBos, 2, imeObjBos.toByteArray()) // text_field_status = 2
+
+        val batchEditBos = ByteArrayOutputStream()
+        writeInt32Field(batchEditBos, 1, imeCounter)   // ime_counter = 1
+        writeInt32Field(batchEditBos, 2, fieldCounter) // field_counter = 2
+        writeMessageField(batchEditBos, 3, editInfoBos.toByteArray()) // edit_info = 3
+
+        val msgBos = ByteArrayOutputStream()
+        writeMessageField(msgBos, 21, batchEditBos.toByteArray()) // field 21 = remote_ime_batch_edit
+        return msgBos.toByteArray()
+    }
+
     fun encodePairingRequest(serviceName: String = "atvremote", clientName: String = "Tactile"): ByteArray {
         val reqBos = ByteArrayOutputStream()
         writeStringField(reqBos, 1, serviceName)
@@ -147,7 +168,6 @@ object ProtobufWire {
     }
 
     fun writeFramedMessage(out: OutputStream, payload: ByteArray) {
-        // Android TV Remote v2 uses a 1-byte length prefix (for < 128) or varint
         writeVarint(out, payload.size.toLong())
         out.write(payload)
         out.flush()

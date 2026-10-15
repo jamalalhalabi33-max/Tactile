@@ -102,7 +102,7 @@ fun DevicesSheet(
     val currentDevice by remoteManager.currentDevice.collectAsState()
     val connectionState by remoteManager.connectionState.collectAsState()
 
-    val discovered = remember { mutableStateListOf<TvDevice>() }
+    val discoveredDevices by discoveryManager.discoveredDevices.collectAsState()
     var isScanning by remember { mutableStateOf(true) }
     var scanTimeExpired by remember { mutableStateOf(false) }
     var showManualIpInput by remember { mutableStateOf(false) }
@@ -112,24 +112,14 @@ fun DevicesSheet(
 
     // Start scanning on open
     LaunchedEffect(Unit) {
-        discovered.clear()
         isScanning = true
         scanTimeExpired = false
         discoveryManager.startScanning(scope)
-
-        val job = launch {
-            discoveryManager.discoveredDevices.collect { dev ->
-                if (discovered.none { it.id == dev.id || it.ip == dev.ip }) {
-                    discovered.add(dev)
-                }
-            }
-        }
 
         // 8-second empty state timer
         delay(8000)
         scanTimeExpired = true
         isScanning = false
-        job.cancel()
     }
 
     // Auto-dismiss 400ms after connection succeeds
@@ -142,11 +132,11 @@ fun DevicesSheet(
     }
 
     // Merge saved and discovered devices, pinning last-used on top
-    val allDevices = remember(savedDevices, discovered, lastUsedId) {
+    val allDevices = remember(savedDevices, discoveredDevices, lastUsedId) {
         val map = LinkedHashMap<String, TvDevice>()
         // Put last-used first
         val lastDevice = savedDevices.firstOrNull { it.id == lastUsedId }
-            ?: discovered.firstOrNull { it.id == lastUsedId }
+            ?: discoveredDevices.firstOrNull { it.id == lastUsedId }
         if (lastDevice != null) {
             map[lastDevice.id] = lastDevice
         }
@@ -154,7 +144,7 @@ fun DevicesSheet(
         for (d in savedDevices) {
             map.putIfAbsent(d.id, d)
         }
-        for (d in discovered) {
+        for (d in discoveredDevices) {
             map.putIfAbsent(d.id, d)
         }
         map.values.toList()
@@ -212,10 +202,9 @@ fun DevicesSheet(
 
                     TextButton(
                         onClick = {
-                            discovered.clear()
                             isScanning = true
                             scanTimeExpired = false
-                            discoveryManager.startScanning(scope)
+                            discoveryManager.startScanning(scope, clearPrevious = true)
                             scope.launch {
                                 delay(8000)
                                 scanTimeExpired = true
@@ -253,10 +242,14 @@ fun DevicesSheet(
                 // Empty state after 8 seconds
                 EmptyDevicesState(
                     onRescan = {
-                        discovered.clear()
                         isScanning = true
                         scanTimeExpired = false
-                        discoveryManager.startScanning(scope)
+                        discoveryManager.startScanning(scope, clearPrevious = true)
+                        scope.launch {
+                            delay(8000)
+                            scanTimeExpired = true
+                            isScanning = false
+                        }
                     },
                     onEnterIp = { showManualIpInput = true }
                 )
@@ -267,9 +260,11 @@ fun DevicesSheet(
                 ) {
                     items(allDevices, key = { it.id }) { device ->
                         val isSelected = currentDevice?.id == device.id
+                        val isSaved = savedDevices.any { it.id == device.id }
                         DeviceRow(
                             device = device,
                             isPinned = device.id == lastUsedId,
+                            isSaved = isSaved,
                             isSelected = isSelected,
                             connectionState = if (isSelected) connectionState else ConnectionState.Disconnected,
                             onSelect = { remoteManager.selectDevice(device) },
@@ -398,6 +393,7 @@ fun DevicesSheet(
 private fun DeviceRow(
     device: TvDevice,
     isPinned: Boolean,
+    isSaved: Boolean,
     isSelected: Boolean,
     connectionState: ConnectionState,
     onSelect: () -> Unit,
@@ -483,8 +479,22 @@ private fun DeviceRow(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "Last used",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
                             color = AccentBlue
+                        )
+                    } else if (isSaved) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Saved",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Discovered",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                            color = Color(0xFF34C759)
                         )
                     }
                 }
