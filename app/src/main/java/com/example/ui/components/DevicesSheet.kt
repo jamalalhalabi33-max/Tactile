@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -131,23 +132,64 @@ fun DevicesSheet(
         }
     }
 
-    // Merge saved and discovered devices, pinning last-used on top
+    // Merge saved and discovered devices, deduplicating and prioritizing IPv4
     val allDevices = remember(savedDevices, discoveredDevices, lastUsedId) {
-        val map = LinkedHashMap<String, TvDevice>()
-        // Put last-used first
-        val lastDevice = savedDevices.firstOrNull { it.id == lastUsedId }
-            ?: discoveredDevices.firstOrNull { it.id == lastUsedId }
+        val result = mutableListOf<TvDevice>()
+        val cleanSaved = savedDevices.filter { !it.ip.startsWith("fe80", ignoreCase = true) }
+        val cleanDiscovered = discoveredDevices.filter { !it.ip.startsWith("fe80", ignoreCase = true) }
+
+        // Last-used device pinned first if present
+        val lastDevice = cleanSaved.firstOrNull { it.id == lastUsedId }
+            ?: cleanDiscovered.firstOrNull { it.id == lastUsedId }
         if (lastDevice != null) {
-            map[lastDevice.id] = lastDevice
+            result.add(lastDevice)
         }
 
-        for (d in savedDevices) {
-            map.putIfAbsent(d.id, d)
+        fun norm(name: String) = name.lowercase()
+            .replace("_androidtvremote2", "")
+            .replace("._tcp", "")
+            .replace(".local", "")
+            .replace(Regex("[^a-z0-9]"), "")
+            .trim()
+
+        for (candidate in cleanSaved + cleanDiscovered) {
+            val isIpv4 = !candidate.ip.contains(":")
+            val candNorm = norm(candidate.name)
+
+            // Deduplicate by IP
+            val existingByIpIndex = result.indexOfFirst { it.ip.equals(candidate.ip, ignoreCase = true) }
+            if (existingByIpIndex != -1) {
+                val existing = result[existingByIpIndex]
+                if ((existing.name == "Android TV" || existing.name == "LG webOS TV") &&
+                    candidate.name != "Android TV" && candidate.name != "LG webOS TV") {
+                    result[existingByIpIndex] = existing.copy(name = candidate.name)
+                }
+                continue
+            }
+
+            // Deduplicate by brand + name
+            val existingByNameIndex = result.indexOfFirst { existing ->
+                if (existing.brand != candidate.brand) return@indexOfFirst false
+                val existNorm = norm(existing.name)
+                if (existNorm.isEmpty() || candNorm.isEmpty()) return@indexOfFirst false
+                existNorm == candNorm ||
+                        (existNorm != "androidtv" && existNorm != "lgwebostv" &&
+                                (existNorm.contains(candNorm) || candNorm.contains(existNorm)))
+            }
+
+            if (existingByNameIndex != -1) {
+                val existing = result[existingByNameIndex]
+                val existingIsIpv4 = !existing.ip.contains(":")
+                // If existing was IPv6 and candidate is IPv4, upgrade to IPv4!
+                if (!existingIsIpv4 && isIpv4) {
+                    result[existingByNameIndex] = candidate
+                }
+            } else {
+                result.add(candidate)
+            }
         }
-        for (d in discoveredDevices) {
-            map.putIfAbsent(d.id, d)
-        }
-        map.values.toList()
+
+        result
     }
 
     ModalBottomSheet(
@@ -590,7 +632,14 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
 
         // 6 Large Code Boxes
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) {
+                    focusRequester.requestFocus()
+                },
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             for (i in 0 until 6) {

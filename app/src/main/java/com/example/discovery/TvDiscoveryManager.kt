@@ -139,6 +139,9 @@ class TvDiscoveryManager(private val context: Context) {
                 val rawHost = resolved.host?.hostAddress
                 if (!rawHost.isNullOrEmpty()) {
                     val host = rawHost.substringBefore("%") // Strip interface suffix if present
+                    if (host.startsWith("fe80", ignoreCase = true)) {
+                        return@withContext
+                    }
                     val rawName = resolved.serviceName.ifEmpty { "Android TV" }
                     val cleanName = rawName
                         .replace("_androidtvremote2", "", ignoreCase = true)
@@ -242,6 +245,7 @@ class TvDiscoveryManager(private val context: Context) {
                     val response = String(receivePacket.data, 0, receivePacket.length, Charsets.UTF_8)
                     val rawIp = receivePacket.address.hostAddress ?: continue
                     val ip = rawIp.substringBefore("%")
+                    if (ip.startsWith("fe80", ignoreCase = true)) continue
 
                     // Check if response indicates LG webOS TV
                     val isLg = response.contains("lge.com", ignoreCase = true) ||
@@ -406,6 +410,7 @@ class TvDiscoveryManager(private val context: Context) {
                     mSocket.receive(packet)
                     val rawIp = packet.address.hostAddress ?: continue
                     val ip = rawIp.substringBefore("%")
+                    if (ip.startsWith("fe80", ignoreCase = true)) continue
                     val data = packet.data.copyOf(packet.length)
                     val content = String(data, 0, packet.length, Charsets.ISO_8859_1)
 
@@ -476,9 +481,73 @@ class TvDiscoveryManager(private val context: Context) {
         return list
     }
 
+    private fun normalizeName(name: String): String {
+        return name
+            .lowercase()
+            .replace("_androidtvremote2", "")
+            .replace("._tcp", "")
+            .replace(".local", "")
+            .replace(Regex("[^a-z0-9]"), "")
+            .trim()
+    }
+
     private fun emitDevice(device: TvDevice) {
-        seenDevices[device.ip] = device
-        _discoveredDevices.value = seenDevices.values.toList()
+        // Drop unusable link-local IPv6 addresses
+        if (device.ip.startsWith("fe80", ignoreCase = true) || device.ip.contains("%")) {
+            return
+        }
+
+        val isNewIpv4 = !device.ip.contains(":")
+        val newNormName = normalizeName(device.name)
+
+        synchronized(seenDevices) {
+            // Check if device with exact same IP is already seen
+            val existingByIp = seenDevices.values.firstOrNull { it.ip.equals(device.ip, ignoreCase = true) }
+            if (existingByIp != null) {
+                val betterName = if ((existingByIp.name == "Android TV" || existingByIp.name == "LG webOS TV") &&
+                    device.name != "Android TV" && device.name != "LG webOS TV") {
+                    device.name
+                } else {
+                    existingByIp.name
+                }
+                seenDevices[existingByIp.id] = device.copy(id = existingByIp.id, name = betterName)
+                _discoveredDevices.value = seenDevices.values.toList()
+                return
+            }
+
+            // Check if device with same brand and normalized name is already seen (e.g. IPv4 vs IPv6 duplicate)
+            val existingByName = seenDevices.values.firstOrNull { existing ->
+                if (existing.brand != device.brand) return@firstOrNull false
+                val existNorm = normalizeName(existing.name)
+                if (existNorm.isEmpty() || newNormName.isEmpty()) return@firstOrNull false
+                existNorm == newNormName ||
+                        (existNorm != "androidtv" && existNorm != "lgwebostv" &&
+                                (existNorm.contains(newNormName) || newNormName.contains(existNorm)))
+            }
+
+            if (existingByName != null) {
+                val existingIsIpv4 = !existingByName.ip.contains(":")
+                if (isNewIpv4 && !existingIsIpv4) {
+                    // Upgrade: Remove IPv6 duplicate and replace with IPv4 entry
+                    seenDevices.remove(existingByName.id)
+                    seenDevices[device.id] = device
+                } else if (!isNewIpv4 && existingIsIpv4) {
+                    // Existing entry is already IPv4; ignore IPv6 duplicate
+                    return
+                } else {
+                    // Both same IP family: if new has better name, update
+                    if ((existingByName.name == "Android TV" || existingByName.name == "LG webOS TV") &&
+                        device.name != "Android TV" && device.name != "LG webOS TV") {
+                        seenDevices[existingByName.id] = existingByName.copy(name = device.name)
+                    }
+                    return
+                }
+            } else {
+                seenDevices[device.id] = device
+            }
+
+            _discoveredDevices.value = seenDevices.values.toList()
+        }
     }
 
     /**

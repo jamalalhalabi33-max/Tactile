@@ -14,13 +14,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.InputStream
 import java.io.OutputStream
+import java.math.BigInteger
 import java.net.InetSocketAddress
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
+import java.security.interfaces.RSAPublicKey
 import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
@@ -115,10 +118,16 @@ class AndroidTvController(
     private fun handleCommandFrame(frame: ByteArray, out: OutputStream) {
         var i = 0
         while (i < frame.size) {
-            val tag = frame[i].toInt() and 0xFF
-            val fieldNum = tag ushr 3
-            val wireType = tag and 0x07
-            i++
+            var tag = 0L
+            var tagShift = 0
+            while (i < frame.size) {
+                val b = frame[i++].toInt() and 0xFF
+                tag = tag or ((b and 0x7F).toLong() shl tagShift)
+                if (b and 0x80 == 0) break
+                tagShift += 7
+            }
+            val fieldNum = (tag ushr 3).toInt()
+            val wireType = (tag and 0x07).toInt()
 
             if (wireType == 0) { // Varint
                 var v = 0L
@@ -313,10 +322,7 @@ class AndroidTvController(
     private fun startPairing() {
         scope.launch {
             try {
-                _connectionState.value = ConnectionState.PairingRequired(
-                    prompt = "Enter 6-character code shown on TV",
-                    brand = TvBrand.ANDROID_TV
-                )
+                _connectionState.value = ConnectionState.Connecting
 
                 val sslCtx = sslContext ?: AndroidTvCertificateHelper.getOrCreateSslContext(storage).first.also {
                     sslContext = it
@@ -324,12 +330,15 @@ class AndroidTvController(
 
                 val socket = sslCtx.socketFactory.createSocket() as SSLSocket
                 socket.tcpNoDelay = true
+                socket.soTimeout = 10000
                 socket.connect(InetSocketAddress(device.ip, 6467), 5000)
                 socket.startHandshake()
 
                 val peerCerts = socket.session.peerCertificates
                 if (peerCerts.isNotEmpty() && peerCerts[0] is X509Certificate) {
                     serverCert = peerCerts[0] as X509Certificate
+                } else {
+                    throw IllegalStateException("No TV certificate received during TLS handshake")
                 }
 
                 pairingSocket = socket
@@ -337,20 +346,42 @@ class AndroidTvController(
                 pairingIn = socket.inputStream
 
                 // 1. Send PairingRequest
-                ProtobufWire.writeFramedMessage(pairingOut!!, ProtobufWire.encodePairingRequest())
+                ProtobufWire.writeFramedMessage(pairingOut!!, ProtobufWire.encodePairingRequest(serviceName = "atvremote", clientName = "Tactile"))
                 val ack1 = ProtobufWire.readFramedMessage(pairingIn!!)
+                val status1 = ProtobufWire.parseOuterMessageStatus(ack1)
+                if (status1 != 200) {
+                    throw IllegalStateException("TV rejected pairing request with status $status1")
+                }
 
                 // 2. Send PairingOption
                 ProtobufWire.writeFramedMessage(pairingOut!!, ProtobufWire.encodePairingOption())
                 val ack2 = ProtobufWire.readFramedMessage(pairingIn!!)
+                val status2 = ProtobufWire.parseOuterMessageStatus(ack2)
+                if (status2 != 200) {
+                    throw IllegalStateException("TV rejected pairing options with status $status2")
+                }
 
                 // 3. Send PairingConfiguration
                 ProtobufWire.writeFramedMessage(pairingOut!!, ProtobufWire.encodePairingConfiguration())
                 val ack3 = ProtobufWire.readFramedMessage(pairingIn!!)
+                val status3 = ProtobufWire.parseOuterMessageStatus(ack3)
+                if (status3 != 200) {
+                    throw IllegalStateException("TV rejected pairing configuration with status $status3")
+                }
 
-                Log.d(TAG, "Pairing handshake initiated. TV is now displaying 6-char code.")
+                Log.d(TAG, "Pairing handshake successful. TV is now displaying 6-character code.")
+                _connectionState.value = ConnectionState.PairingRequired(
+                    prompt = "Enter 6-character code shown on TV",
+                    brand = TvBrand.ANDROID_TV
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start pairing", e)
+                try {
+                    pairingSocket?.close()
+                } catch (_: Exception) {}
+                pairingSocket = null
+                pairingOut = null
+                pairingIn = null
                 _connectionState.value = ConnectionState.Error("Pairing failed: ${e.message}")
             }
         }
@@ -367,28 +398,53 @@ class AndroidTvController(
 
             try {
                 val cleanCode = code.trim().uppercase()
-                val codeBytes = if (cleanCode.length == 6 && cleanCode.matches(Regex("[0-9A-F]{6}"))) {
-                    cleanCode.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                } else {
-                    cleanCode.toByteArray(Charsets.UTF_8)
+                if (cleanCode.length != 6 || !cleanCode.matches(Regex("[0-9A-F]{6}"))) {
+                    _connectionState.value = ConnectionState.Error("Code must be 6 hex characters (0-9, A-F)")
+                    return@launch
                 }
 
-                val digest = MessageDigest.getInstance("SHA-256")
-                clientCert?.encoded?.let { digest.update(it) }
-                serverCert?.encoded?.let { digest.update(it) }
-                digest.update(codeBytes)
-                val secretHash = digest.digest()
+                val clientRsa = clientCert?.publicKey as? RSAPublicKey
+                    ?: throw IllegalStateException("Client certificate does not contain an RSA public key")
+                val serverRsa = serverCert?.publicKey as? RSAPublicKey
+                    ?: throw IllegalStateException("Server certificate does not contain an RSA public key")
 
-                val secretMsg = ProtobufWire.encodePairingSecret(secretHash)
+                // Android TV Remote v2 Polo protocol pairing secret computation:
+                // SHA256(client_modulus + client_exponent + server_modulus + server_exponent + pin[2:])
+                val md = MessageDigest.getInstance("SHA-256")
+                md.update(getModulusBytes(clientRsa.modulus))
+                md.update(getExponentBytes(clientRsa.publicExponent))
+                md.update(getModulusBytes(serverRsa.modulus))
+                md.update(getExponentBytes(serverRsa.publicExponent))
+                md.update(hexToByteArray(cleanCode.substring(2)))
+                val hashResult = md.digest()
+
+                val expectedFirstByte = cleanCode.substring(0, 2).toInt(16)
+                val actualFirstByte = hashResult[0].toInt() and 0xFF
+                if (actualFirstByte != expectedFirstByte) {
+                    Log.w(TAG, "Pairing PIN verification mismatch: expected 0x${cleanCode.substring(0, 2)}, got 0x${Integer.toHexString(actualFirstByte)}")
+                    _connectionState.value = ConnectionState.Error("Incorrect pairing code entered. Check your TV screen.")
+                    return@launch
+                }
+
+                val secretMsg = ProtobufWire.encodePairingSecret(hashResult)
                 ProtobufWire.writeFramedMessage(out, secretMsg)
 
-                val response = ProtobufWire.readFramedMessage(input)
-                Log.d(TAG, "Pairing secret response received: size=${response.size}")
+                val secretAck = ProtobufWire.readFramedMessage(input)
+                val status = ProtobufWire.parseOuterMessageStatus(secretAck)
+                if (status != 200) {
+                    throw IllegalStateException("Pairing secret rejected by TV with status $status")
+                }
 
+                Log.d(TAG, "Pairing secret accepted! Reconnecting to command channel on port 6466.")
                 try {
                     pairingSocket?.close()
                 } catch (_: Exception) {}
                 pairingSocket = null
+                pairingOut = null
+                pairingIn = null
+
+                // Small delay to allow Android TV system service to store pairing credentials
+                delay(250)
 
                 _connectionState.value = ConnectionState.Connecting
                 val sslCtx = sslContext ?: AndroidTvCertificateHelper.getOrCreateSslContext(storage).first
@@ -398,6 +454,34 @@ class AndroidTvController(
                 _connectionState.value = ConnectionState.Error("Wrong pairing code or timeout: ${e.message}")
             }
         }
+    }
+
+    private fun getModulusBytes(modulus: BigInteger): ByteArray {
+        var hex = modulus.toString(16).uppercase()
+        if (hex.length % 2 != 0) {
+            hex = "0$hex"
+        }
+        return hexToByteArray(hex)
+    }
+
+    private fun getExponentBytes(exponent: BigInteger): ByteArray {
+        var hex = exponent.toString(16).uppercase()
+        if (hex.length % 2 != 0) {
+            hex = "0$hex"
+        }
+        return hexToByteArray(hex)
+    }
+
+    private fun hexToByteArray(hex: String): ByteArray {
+        val clean = hex.trim()
+        val len = clean.length
+        val data = ByteArray(len / 2)
+        for (i in 0 until len step 2) {
+            val h = Character.digit(clean[i], 16)
+            val l = Character.digit(clean[i + 1], 16)
+            data[i / 2] = ((h shl 4) or l).toByte()
+        }
+        return data
     }
 
     override fun send(key: Key) {

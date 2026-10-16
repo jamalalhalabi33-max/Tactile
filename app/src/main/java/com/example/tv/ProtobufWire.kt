@@ -111,59 +111,106 @@ object ProtobufWire {
         return msgBos.toByteArray()
     }
 
+    fun parseOuterMessageStatus(data: ByteArray): Int {
+        var idx = 0
+        var status = 200
+        while (idx < data.size) {
+            var tag = 0L
+            var shift = 0
+            while (idx < data.size) {
+                val b = data[idx++].toInt() and 0xFF
+                tag = tag or ((b and 0x7F).toLong() shl shift)
+                if (b and 0x80 == 0) break
+                shift += 7
+            }
+            val fieldNum = (tag ushr 3).toInt()
+            val wireType = (tag and 0x07).toInt()
+
+            if (wireType == 0) { // Varint
+                var v = 0L
+                shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    v = v or ((b and 0x7F).toLong() shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                if (fieldNum == 2) {
+                    status = v.toInt()
+                }
+            } else if (wireType == 2) { // Length-delimited
+                var len = 0
+                shift = 0
+                while (idx < data.size) {
+                    val b = data[idx++].toInt() and 0xFF
+                    len = len or ((b and 0x7F) shl shift)
+                    if (b and 0x80 == 0) break
+                    shift += 7
+                }
+                idx += len
+            } else if (wireType == 1) { // 64-bit fixed
+                idx += 8
+            } else if (wireType == 5) { // 32-bit fixed
+                idx += 4
+            } else {
+                break
+            }
+        }
+        return status
+    }
+
     fun encodePairingRequest(serviceName: String = "atvremote", clientName: String = "Tactile"): ByteArray {
         val reqBos = ByteArrayOutputStream()
-        writeStringField(reqBos, 1, serviceName)
-        writeStringField(reqBos, 2, clientName)
+        writeStringField(reqBos, 1, serviceName) // field 1 = service_name
+        writeStringField(reqBos, 2, clientName)  // field 2 = client_name
 
         val msgBos = ByteArrayOutputStream()
-        writeInt32Field(msgBos, 1, 2) // protocol_version = 2
-        writeInt32Field(msgBos, 2, 1) // status = 1 (STATUS_OK)
+        writeInt32Field(msgBos, 1, 2)   // protocol_version = 2
+        writeInt32Field(msgBos, 2, 200) // status = 200 (STATUS_OK)
         writeMessageField(msgBos, 10, reqBos.toByteArray()) // field 10 = pairing_request
         return msgBos.toByteArray()
     }
 
     fun encodePairingOption(): ByteArray {
         val encBos = ByteArrayOutputStream()
-        writeInt32Field(encBos, 1, 1) // ENCODING_HEXADECIMAL = 1
+        writeInt32Field(encBos, 1, 3) // ENCODING_TYPE_HEXADECIMAL = 3
         writeInt32Field(encBos, 2, 6) // symbol_length = 6
 
         val optBos = ByteArrayOutputStream()
-        writeMessageField(optBos, 1, encBos.toByteArray()) // input_encodings
-        writeMessageField(optBos, 2, encBos.toByteArray()) // output_encodings
-        writeInt32Field(optBos, 3, 1) // preferred_role = 1 (ROLE_INPUT)
+        writeMessageField(optBos, 1, encBos.toByteArray()) // field 1 = input_encodings
+        writeInt32Field(optBos, 3, 1)                      // field 3 = preferred_role (ROLE_TYPE_INPUT = 1)
 
         val msgBos = ByteArrayOutputStream()
-        writeInt32Field(msgBos, 1, 2) // protocol_version = 2
-        writeInt32Field(msgBos, 2, 1) // status = 1 (STATUS_OK)
-        writeMessageField(msgBos, 20, optBos.toByteArray()) // field 20 = pairing_option
+        writeInt32Field(msgBos, 1, 2)   // protocol_version = 2
+        writeInt32Field(msgBos, 2, 200) // status = 200 (STATUS_OK)
+        writeMessageField(msgBos, 20, optBos.toByteArray()) // field 20 = options
         return msgBos.toByteArray()
     }
 
     fun encodePairingConfiguration(): ByteArray {
         val encBos = ByteArrayOutputStream()
-        writeInt32Field(encBos, 1, 1) // ENCODING_HEXADECIMAL = 1
+        writeInt32Field(encBos, 1, 3) // ENCODING_TYPE_HEXADECIMAL = 3
         writeInt32Field(encBos, 2, 6) // symbol_length = 6
 
         val cfgBos = ByteArrayOutputStream()
-        writeMessageField(cfgBos, 1, encBos.toByteArray())
-        writeInt32Field(cfgBos, 2, 1) // client_role = 1
+        writeMessageField(cfgBos, 1, encBos.toByteArray()) // field 1 = encoding
+        writeInt32Field(cfgBos, 2, 1)                      // field 2 = client_role (ROLE_TYPE_INPUT = 1)
 
         val msgBos = ByteArrayOutputStream()
-        writeInt32Field(msgBos, 1, 2)
-        writeInt32Field(msgBos, 2, 1)
-        writeMessageField(msgBos, 30, cfgBos.toByteArray()) // field 30 = pairing_configuration
+        writeInt32Field(msgBos, 1, 2)   // protocol_version = 2
+        writeInt32Field(msgBos, 2, 200) // status = 200 (STATUS_OK)
+        writeMessageField(msgBos, 30, cfgBos.toByteArray()) // field 30 = configuration
         return msgBos.toByteArray()
     }
 
     fun encodePairingSecret(secretBytes: ByteArray): ByteArray {
         val secBos = ByteArrayOutputStream()
-        writeBytesField(secBos, 1, secretBytes)
+        writeBytesField(secBos, 1, secretBytes) // field 1 = secret
 
         val msgBos = ByteArrayOutputStream()
-        writeInt32Field(msgBos, 1, 2)
-        writeInt32Field(msgBos, 2, 1)
-        writeMessageField(msgBos, 40, secBos.toByteArray()) // field 40 = pairing_secret
+        writeInt32Field(msgBos, 1, 2)   // protocol_version = 2
+        writeInt32Field(msgBos, 2, 200) // status = 200 (STATUS_OK)
+        writeMessageField(msgBos, 40, secBos.toByteArray()) // field 40 = secret
         return msgBos.toByteArray()
     }
 

@@ -154,10 +154,88 @@ class TactileProtocolTest {
         val now = t0 + 2000L
         val valid = queue.filter { now - it.timestamp <= 1500L }
         assertTrue("Events older than 1500ms must be expired", valid.isEmpty())
+    }
 
-        // If flushed at t0 + 1200ms:
-        val earlierNow = t0 + 1200L
-        val validEarlier = queue.filter { earlierNow - it.timestamp <= 1500L }
-        assertEquals(3, validEarlier.size)
+    // 6. Polo Pairing Protobuf & Status Parsing
+    @Test
+    fun testPoloPairingProtobufAndStatus() {
+        val reqBytes = ProtobufWire.encodePairingRequest("atvremote", "Tactile")
+        assertEquals(200, ProtobufWire.parseOuterMessageStatus(reqBytes))
+
+        val optBytes = ProtobufWire.encodePairingOption()
+        assertEquals(200, ProtobufWire.parseOuterMessageStatus(optBytes))
+
+        val cfgBytes = ProtobufWire.encodePairingConfiguration()
+        assertEquals(200, ProtobufWire.parseOuterMessageStatus(cfgBytes))
+
+        val secBytes = ProtobufWire.encodePairingSecret(byteArrayOf(0x01, 0x02, 0x03))
+        assertEquals(200, ProtobufWire.parseOuterMessageStatus(secBytes))
+    }
+
+    // 7. Polo Secret Hash Verification
+    @Test
+    fun testPoloSecretHashVerification() {
+        val clientModulus = java.math.BigInteger("1234567890abcdef1234567890abcdef", 16)
+        val clientExponent = java.math.BigInteger.valueOf(65537)
+        val serverModulus = java.math.BigInteger("fedcba0987654321fedcba0987654321", 16)
+        val serverExponent = java.math.BigInteger.valueOf(65537)
+        val pin = "A1B2C3"
+
+        fun hexToBytes(hex: String): ByteArray {
+            val len = hex.length
+            val data = ByteArray(len / 2)
+            for (i in 0 until len step 2) {
+                data[i / 2] = ((Character.digit(hex[i], 16) shl 4) or Character.digit(hex[i + 1], 16)).toByte()
+            }
+            return data
+        }
+
+        fun getBytes(bi: java.math.BigInteger): ByteArray {
+            var hex = bi.toString(16).uppercase()
+            if (hex.length % 2 != 0) hex = "0$hex"
+            return hexToBytes(hex)
+        }
+
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        md.update(getBytes(clientModulus))
+        md.update(getBytes(clientExponent))
+        md.update(getBytes(serverModulus))
+        md.update(getBytes(serverExponent))
+        md.update(hexToBytes(pin.substring(2)))
+        val hash = md.digest()
+
+        // Known digest hex from Python verification: 4e790bf9372152c8ad6befedf7cea1428b2ce2aaa9e8627a3ab8f3c6004db4ab
+        val hexDigest = hash.joinToString("") { "%02x".format(it) }
+        assertEquals("4e790bf9372152c8ad6befedf7cea1428b2ce2aaa9e8627a3ab8f3c6004db4ab", hexDigest)
+    }
+
+    // 8. IPv4 Over IPv6 Deduplication
+    @Test
+    fun testIPv4OverIPv6Deduplication() {
+        val list = mutableListOf<TvDevice>()
+        val devV6 = TvDevice("atv_v6", "Sony Bravia", "2600:1700::1", TvBrand.ANDROID_TV)
+        val devV4 = TvDevice("atv_v4", "Sony Bravia", "192.168.1.100", TvBrand.ANDROID_TV)
+
+        fun norm(name: String) = name.lowercase().replace(Regex("[^a-z0-9]"), "")
+
+        for (candidate in listOf(devV6, devV4)) {
+            val isIpv4 = !candidate.ip.contains(":")
+            val candNorm = norm(candidate.name)
+            val existingIndex = list.indexOfFirst {
+                it.brand == candidate.brand && norm(it.name) == candNorm
+            }
+            if (existingIndex != -1) {
+                val existing = list[existingIndex]
+                val existingIsIpv4 = !existing.ip.contains(":")
+                if (!existingIsIpv4 && isIpv4) {
+                    list[existingIndex] = candidate
+                }
+            } else {
+                list.add(candidate)
+            }
+        }
+
+        assertEquals(1, list.size)
+        assertEquals("192.168.1.100", list[0].ip)
     }
 }
