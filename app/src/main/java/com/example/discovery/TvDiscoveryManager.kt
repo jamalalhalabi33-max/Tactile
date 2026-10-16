@@ -139,7 +139,7 @@ class TvDiscoveryManager(private val context: Context) {
                 val rawHost = resolved.host?.hostAddress
                 if (!rawHost.isNullOrEmpty()) {
                     val host = rawHost.substringBefore("%") // Strip interface suffix if present
-                    if (host.startsWith("fe80", ignoreCase = true)) {
+                    if (host.startsWith("fe80", ignoreCase = true) || NetworkUtils.isSelfIp(host)) {
                         return@withContext
                     }
                     val rawName = resolved.serviceName.ifEmpty { "Android TV" }
@@ -245,7 +245,7 @@ class TvDiscoveryManager(private val context: Context) {
                     val response = String(receivePacket.data, 0, receivePacket.length, Charsets.UTF_8)
                     val rawIp = receivePacket.address.hostAddress ?: continue
                     val ip = rawIp.substringBefore("%")
-                    if (ip.startsWith("fe80", ignoreCase = true)) continue
+                    if (ip.startsWith("fe80", ignoreCase = true) || NetworkUtils.isSelfIp(ip)) continue
 
                     // Check if response indicates LG webOS TV
                     val isLg = response.contains("lge.com", ignoreCase = true) ||
@@ -386,6 +386,10 @@ class TvDiscoveryManager(private val context: Context) {
                 mSocket.joinGroup(InetAddress.getByName("224.0.0.251"))
             } catch (_: Exception) {}
 
+            try {
+                mSocket.loopbackMode = true
+            } catch (_: Exception) {}
+
             val queryPacket = buildMdnsPtrQuery("_androidtvremote2._tcp.local")
 
             launch {
@@ -410,8 +414,11 @@ class TvDiscoveryManager(private val context: Context) {
                     mSocket.receive(packet)
                     val rawIp = packet.address.hostAddress ?: continue
                     val ip = rawIp.substringBefore("%")
-                    if (ip.startsWith("fe80", ignoreCase = true)) continue
+                    if (ip.startsWith("fe80", ignoreCase = true) || NetworkUtils.isSelfIp(ip)) continue
                     val data = packet.data.copyOf(packet.length)
+                    // Must be a DNS response (QR bit = 1 in flags byte 2)
+                    if (data.size < 12 || (data[2].toInt() and 0x80) == 0) continue
+
                     val content = String(data, 0, packet.length, Charsets.ISO_8859_1)
 
                     if (content.contains("androidtvremote2", ignoreCase = true)) {
@@ -492,8 +499,8 @@ class TvDiscoveryManager(private val context: Context) {
     }
 
     private fun emitDevice(device: TvDevice) {
-        // Drop unusable link-local IPv6 addresses
-        if (device.ip.startsWith("fe80", ignoreCase = true) || device.ip.contains("%")) {
+        // Drop unusable link-local IPv6 addresses and self-addresses
+        if (device.ip.startsWith("fe80", ignoreCase = true) || device.ip.contains("%") || NetworkUtils.isSelfIp(device.ip)) {
             return
         }
 

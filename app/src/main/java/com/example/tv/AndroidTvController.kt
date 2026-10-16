@@ -60,6 +60,10 @@ class AndroidTvController(
         if (_connectionState.value is ConnectionState.Connecting || _connectionState.value is ConnectionState.Connected) {
             return
         }
+        if (com.example.discovery.NetworkUtils.isSelfIp(device.ip)) {
+            _connectionState.value = ConnectionState.Error("Cannot connect to local device IP (${device.ip}). Please select your TV from the device list.")
+            return
+        }
         _connectionState.value = ConnectionState.Connecting
 
         try {
@@ -382,7 +386,14 @@ class AndroidTvController(
                 pairingSocket = null
                 pairingOut = null
                 pairingIn = null
-                _connectionState.value = ConnectionState.Error("Pairing failed: ${e.message}")
+                val userMsg = if (e is java.net.ConnectException || e.message?.contains("ECONNREFUSED", ignoreCase = true) == true) {
+                    "Unable to connect to TV at ${device.ip} (pairing port 6467 refused). Ensure the TV is on, connected to the same Wi-Fi, and Google TV remote is active."
+                } else if (e is java.net.SocketTimeoutException) {
+                    "Connection timed out reaching TV at ${device.ip}. Please verify the TV's IP address and Wi-Fi connection."
+                } else {
+                    "Pairing failed: ${e.message}"
+                }
+                _connectionState.value = ConnectionState.Error(userMsg)
             }
         }
     }

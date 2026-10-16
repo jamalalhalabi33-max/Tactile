@@ -32,12 +32,13 @@ class TvStorage(private val context: Context) {
     }
 
     suspend fun getLastUsedDevice(): TvDevice? {
-        val devices = savedDevicesFlow.first()
+        val devices = savedDevicesFlow.first().filterNot { com.example.discovery.NetworkUtils.isSelfIp(it.ip) }
         val lastId = lastUsedDeviceIdFlow.first()
         return devices.firstOrNull { it.id == lastId } ?: devices.firstOrNull()
     }
 
     suspend fun saveDevice(device: TvDevice) {
+        if (com.example.discovery.NetworkUtils.isSelfIp(device.ip)) return
         context.dataStore.edit { preferences ->
             val existing = parseDevices(preferences[keySavedDevices] ?: "[]").toMutableList()
             val index = existing.indexOfFirst { it.id == device.id || it.ip == device.ip }
@@ -116,7 +117,7 @@ class TvStorage(private val context: Context) {
         } catch (e: Exception) {
             // Ignore corrupted JSON
         }
-        return list
+        return list.filterNot { com.example.discovery.NetworkUtils.isSelfIp(it.ip) }
     }
 
     private fun serializeDevices(devices: List<TvDevice>): String {
