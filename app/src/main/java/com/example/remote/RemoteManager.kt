@@ -149,8 +149,11 @@ class RemoteManager(
                 val prev = _connectionState.value
                 _connectionState.value = state
 
-                if (state is ConnectionState.Connected && prev !is ConnectionState.Connected) {
-                    flushOfflineQueue()
+                if (state is ConnectionState.Connected) {
+                    autoReconnectJob?.cancel()
+                    if (prev !is ConnectionState.Connected) {
+                        flushOfflineQueue()
+                    }
                 } else if (state is ConnectionState.Disconnected) {
                     _keyboardSession.value = KeyboardSession(isActive = false)
                     startAutoReconnect()

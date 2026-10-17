@@ -44,6 +44,7 @@ import com.example.model.ConnectionState
 import com.example.model.TvDevice
 import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.StatusConnected
 import com.example.ui.theme.StatusConnecting
 
 import com.example.ui.theme.LightButtonBase
@@ -122,12 +123,12 @@ fun StatusPill(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             } else if (isConnected) {
-                // Clean connected blue dot
+                // Clean connected green dot
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(AccentBlue)
+                        .background(StatusConnected)
                 )
                 Spacer(modifier = Modifier.width(10.dp))
             } else if (isConnecting) {

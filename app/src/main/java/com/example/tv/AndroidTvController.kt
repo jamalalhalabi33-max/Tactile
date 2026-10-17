@@ -80,6 +80,13 @@ class AndroidTvController(
     }
 
     private fun tryConnectCommandChannel(sslCtx: SSLContext) {
+        try {
+            commandSocket?.close()
+        } catch (_: Exception) {}
+        commandSocket = null
+        commandOut = null
+        commandIn = null
+
         val socket = sslCtx.socketFactory.createSocket() as SSLSocket
         socket.tcpNoDelay = true
         socket.keepAlive = true
@@ -93,6 +100,10 @@ class AndroidTvController(
         // Send RemoteConfigure
         val configMsg = ProtobufWire.encodeRemoteConfigure()
         ProtobufWire.writeFramedMessage(commandOut!!, configMsg)
+
+        // Send RemoteSetActive
+        val activeMsg = ProtobufWire.encodeRemoteSetActive(622)
+        ProtobufWire.writeFramedMessage(commandOut!!, activeMsg)
 
         _connectionState.value = ConnectionState.Connected
         startReadLoop()
@@ -153,10 +164,8 @@ class AndroidTvController(
                 }
 
                 if (fieldNum == 1) { // remote_configure
-                    val resp = ProtobufWire.encodeRemoteConfigure()
-                    synchronized(out) {
-                        ProtobufWire.writeFramedMessage(out, resp)
-                    }
+                    // TV is confirming its supported features. Do not echo RemoteConfigure back (prevents loop)
+                    Log.d(TAG, "TV remote_configure acknowledged")
                 } else if (fieldNum == 2) { // remote_set_active
                     val resp = ProtobufWire.encodeRemoteSetActive(622)
                     synchronized(out) {
@@ -164,9 +173,27 @@ class AndroidTvController(
                     }
                 } else if (fieldNum == 8) { // remote_ping_request
                     var val1 = 1
-                    if (len >= 2 && (frame[i].toInt() and 0x07) == 0) {
-                        val1 = frame[i + 1].toInt()
-                    }
+                    try {
+                        var p = i
+                        while (p < i + len) {
+                            val tagB = frame[p++].toInt() and 0xFF
+                            val fn = tagB ushr 3
+                            val wt = tagB and 0x07
+                            if (wt == 0) {
+                                var v = 0
+                                var s = 0
+                                while (p < i + len) {
+                                    val b = frame[p++].toInt() and 0xFF
+                                    v = v or ((b and 0x7F) shl s)
+                                    if ((b and 0x80) == 0) break
+                                    s += 7
+                                }
+                                if (fn == 1) val1 = v
+                            } else {
+                                break
+                            }
+                        }
+                    } catch (_: Exception) {}
                     val resp = ProtobufWire.encodeRemotePingResponse(val1)
                     synchronized(out) {
                         ProtobufWire.writeFramedMessage(out, resp)

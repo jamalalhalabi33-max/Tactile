@@ -615,6 +615,8 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
     var codeText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
+    var hasSubmitted by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
@@ -673,7 +675,8 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
             onValueChange = { newText ->
                 val clean = newText.filter { it.isLetterOrDigit() }.take(6).uppercase()
                 codeText = clean
-                if (clean.length == 6) {
+                if (clean.length == 6 && !hasSubmitted) {
+                    hasSubmitted = true
                     onSubmit(clean)
                 }
             },
@@ -682,7 +685,10 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
                 imeAction = ImeAction.Done
             ),
             keyboardActions = KeyboardActions(onDone = {
-                if (codeText.length == 6) onSubmit(codeText)
+                if (codeText.length == 6 && !hasSubmitted) {
+                    hasSubmitted = true
+                    onSubmit(codeText)
+                }
             }),
             modifier = Modifier
                 .size(1.dp)
