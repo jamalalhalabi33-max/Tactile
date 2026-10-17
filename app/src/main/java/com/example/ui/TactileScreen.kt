@@ -63,15 +63,27 @@ import com.example.ui.components.UpperBlock
 import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.LightBorder
+import com.example.ui.theme.LightButtonBase
+import com.example.ui.theme.LightButtonIcon
+import com.example.ui.theme.LightGradientBottom
+import com.example.ui.theme.LightGradientMiddle
+import com.example.ui.theme.LightGradientTop
+import com.example.ui.theme.LocalThemeIsDark
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.LightMode
+import androidx.compose.ui.graphics.Brush
 
 @Composable
 fun TactileScreen(
     remoteManager: RemoteManager,
     discoveryManager: TvDiscoveryManager,
+    isDarkTheme: Boolean = true,
+    onToggleTheme: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isDark = LocalThemeIsDark.current
     val context = LocalContext.current
     val currentDevice by remoteManager.currentDevice.collectAsState()
     val connectionState by remoteManager.connectionState.collectAsState()
@@ -131,10 +143,20 @@ fun TactileScreen(
 
     val statusBarPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
+    val backgroundBrush = if (!isDark) {
+        Brush.verticalGradient(
+            listOf(LightGradientTop, LightGradientMiddle, LightGradientBottom)
+        )
+    } else {
+        Brush.linearGradient(
+            listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.background)
+        )
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(backgroundBrush)
             .testTag("tactile_root_screen")
     ) {
         val screenHeight = maxHeight
@@ -156,19 +178,56 @@ fun TactileScreen(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Top Header: Status Pill ("Search" / TV name) and Manual Keyboard Fallback Button
-            val isDark = isSystemInDarkTheme()
+            // Top Header: Minimal Theme Switch (top-left), Status Pill (center), Keyboard Button (top-right)
             val keyboardSession by remoteManager.keyboardSession.collectAsState()
 
             Row(
                 modifier = Modifier
+                    .fillMaxWidth()
                     .graphicsLayer {
                         alpha = pillAlpha.value
                         translationY = pillY.value.dp.toPx()
                     },
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Top-left minimal theme switch button (not following system theme)
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .shadow(
+                            elevation = if (!isDark) 4.dp else 0.dp,
+                            shape = CircleShape,
+                            ambientColor = Color.Black.copy(alpha = 0.05f),
+                            spotColor = Color.Black.copy(alpha = 0.08f)
+                        )
+                        .clip(CircleShape)
+                        .background(if (!isDark) LightButtonBase else MaterialTheme.colorScheme.surface)
+                        .then(
+                            if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
+                            else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = true),
+                            onClick = onToggleTheme
+                        )
+                        .testTag("theme_toggle_button")
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = if (isDark) "Switch to light theme" else "Switch to dark theme"
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isDark) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                        contentDescription = null,
+                        tint = if (!isDark) LightButtonIcon else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Center: Status Pill
                 StatusPill(
                     device = currentDevice,
                     connectionState = connectionState,
@@ -178,10 +237,11 @@ fun TactileScreen(
                     }
                 )
 
+                // Top-right: Manual Keyboard Fallback Button (or balanced spacer)
                 if (connectionState is ConnectionState.Connected) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(42.dp)
                             .shadow(
                                 elevation = if (!isDark) 4.dp else 0.dp,
                                 shape = CircleShape,
@@ -189,10 +249,10 @@ fun TactileScreen(
                                 spotColor = Color.Black.copy(alpha = 0.08f)
                             )
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surface)
+                            .background(if (!isDark) LightButtonBase else MaterialTheme.colorScheme.surface)
                             .then(
                                 if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
-                                else Modifier.border(1.dp, LightBorder, CircleShape)
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
                             )
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
@@ -211,10 +271,12 @@ fun TactileScreen(
                         Icon(
                             imageVector = Icons.Rounded.Keyboard,
                             contentDescription = null,
-                            tint = if (keyboardSession.isActive) AccentBlue else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                            modifier = Modifier.size(22.dp)
+                            tint = if (keyboardSession.isActive) AccentBlue else (if (!isDark) LightButtonIcon else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
+                } else {
+                    Spacer(modifier = Modifier.size(42.dp))
                 }
             }
 

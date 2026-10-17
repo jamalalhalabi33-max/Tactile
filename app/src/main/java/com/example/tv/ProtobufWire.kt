@@ -70,7 +70,10 @@ object ProtobufWire {
         val devInfoBos = ByteArrayOutputStream()
         writeStringField(devInfoBos, 1, model)
         writeStringField(devInfoBos, 2, make)
-        writeStringField(devInfoBos, 3, "1.0.0")
+        writeInt32Field(devInfoBos, 3, 1)           // unknown1 = 1
+        writeStringField(devInfoBos, 4, "1")         // unknown2 = "1"
+        writeStringField(devInfoBos, 5, "atvremote") // package_name = "atvremote"
+        writeStringField(devInfoBos, 6, "1.0.0")     // app_version = "1.0.0"
 
         val configBos = ByteArrayOutputStream()
         writeInt32Field(configBos, 1, 622)
@@ -78,6 +81,14 @@ object ProtobufWire {
 
         val msgBos = ByteArrayOutputStream()
         writeMessageField(msgBos, 1, configBos.toByteArray()) // field 1 = remote_configure
+        return msgBos.toByteArray()
+    }
+
+    fun encodeRemoteSetActive(active: Int = 622): ByteArray {
+        val activeBos = ByteArrayOutputStream()
+        writeInt32Field(activeBos, 1, active)
+        val msgBos = ByteArrayOutputStream()
+        writeMessageField(msgBos, 2, activeBos.toByteArray()) // field 2 = remote_set_active
         return msgBos.toByteArray()
     }
 

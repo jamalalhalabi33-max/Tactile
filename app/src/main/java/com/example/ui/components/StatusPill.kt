@@ -46,6 +46,10 @@ import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.StatusConnecting
 
+import com.example.ui.theme.LightButtonBase
+import com.example.ui.theme.LightButtonIcon
+import com.example.ui.theme.LocalThemeIsDark
+
 @Composable
 fun StatusPill(
     device: TvDevice?,
@@ -53,7 +57,7 @@ fun StatusPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalThemeIsDark.current
 
     val displayName = when {
         device != null -> device.name
@@ -74,20 +78,23 @@ fun StatusPill(
         label = "dotAlpha"
     )
 
+    val baseColor = if (!isDark) LightButtonBase else MaterialTheme.colorScheme.surface
+    val textColor = if (!isDark) LightButtonIcon else MaterialTheme.colorScheme.onSurface
+
     Box(
         modifier = modifier
             .height(44.dp)
             .shadow(
                 elevation = if (!isDark) 4.dp else 0.dp,
                 shape = CircleShape,
-                ambientColor = Color.Black.copy(alpha = 0.05f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
+                ambientColor = Color.Black.copy(alpha = 0.15f),
+                spotColor = Color.Black.copy(alpha = 0.20f)
             )
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(baseColor)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
-                else Modifier.border(1.dp, Color.Black.copy(alpha = 0.06f), CircleShape)
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
             )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -137,7 +144,7 @@ fun StatusPill(
             Text(
                 text = displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = textColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

@@ -94,7 +94,7 @@ fun DevicesSheet(
     remoteManager: RemoteManager,
     onDismiss: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = com.example.ui.theme.LocalThemeIsDark.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -442,7 +442,7 @@ private fun DeviceRow(
     onForget: () -> Unit,
     onSubmitPairing: (String) -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = com.example.ui.theme.LocalThemeIsDark.current
     val isSuccess = isSelected && connectionState is ConnectionState.Connected
     val isPairing = isSelected && connectionState is ConnectionState.PairingRequired
     val isError = isSelected && connectionState is ConnectionState.Error
@@ -468,7 +468,7 @@ private fun DeviceRow(
             )
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, RoundedCornerShape(18.dp))
-                else Modifier.border(1.dp, Color.Black.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
             )
             .combinedClickable(
                 onClick = onSelect,

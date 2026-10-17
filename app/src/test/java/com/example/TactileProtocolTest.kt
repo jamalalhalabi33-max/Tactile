@@ -238,4 +238,17 @@ class TactileProtocolTest {
         assertEquals(1, list.size)
         assertEquals("192.168.1.100", list[0].ip)
     }
+
+    // 9. Remote Configure & IME Batch Edit Encoding
+    @Test
+    fun testRemoteImeAndConfigureEncoding() {
+        val cfgBytes = ProtobufWire.encodeRemoteConfigure("Tactile", "Android")
+        assertTrue(cfgBytes.isNotEmpty())
+
+        val activeBytes = ProtobufWire.encodeRemoteSetActive(622)
+        assertTrue(activeBytes.isNotEmpty())
+
+        val imeBytes = ProtobufWire.encodeRemoteImeBatchEdit("hello world", 1, 1)
+        assertTrue(imeBytes.isNotEmpty())
+    }
 }

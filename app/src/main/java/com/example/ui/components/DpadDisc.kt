@@ -52,13 +52,22 @@ import kotlinx.coroutines.launch
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import com.example.ui.theme.LightDpadDot
+import com.example.ui.theme.LightDpadOkCenter
+import com.example.ui.theme.LightDpadOkSurface
+import com.example.ui.theme.LightDpadRingBottom
+import com.example.ui.theme.LightDpadRingTop
+import com.example.ui.theme.LocalThemeIsDark
+
 @Composable
 fun DpadDisc(
     diameter: Dp,
     onSendKey: (Key) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalThemeIsDark.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
 
@@ -78,20 +87,26 @@ fun DpadDisc(
 
     val okRadiusRatio = 0.38f / 2f // 19% radius = 38% diameter
 
+    val outerRingBrush = if (!isDark) {
+        Brush.verticalGradient(listOf(LightDpadRingTop, LightDpadRingBottom))
+    } else {
+        SolidColor(MaterialTheme.colorScheme.surface)
+    }
+
     Box(
         modifier = modifier
             .size(diameter)
             .shadow(
-                elevation = if (!isDark) 8.dp else 0.dp,
+                elevation = if (!isDark) 10.dp else 0.dp,
                 shape = CircleShape,
-                ambientColor = Color.Black.copy(alpha = 0.08f),
-                spotColor = Color.Black.copy(alpha = 0.12f)
+                ambientColor = Color.Black.copy(alpha = 0.25f),
+                spotColor = Color.Black.copy(alpha = 0.35f)
             )
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(outerRingBrush)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, CircleShape)
-                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, CircleShape)
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
             )
             .testTag("dpad_disc")
             .semantics {
@@ -252,80 +267,124 @@ fun DpadDisc(
             }
         }
 
-        // Up Chevron
+        // Up Directional Indicator (White dot in light mode, Chevron in dark mode)
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .graphicsLayer {
-                    translationY = 24.dp.toPx()
+                    translationY = if (!isDark) 30.dp.toPx() else 24.dp.toPx()
                     scaleX = upScale.value
                     scaleY = upScale.value
                 }
         ) {
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowUp,
-                contentDescription = "Up",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                modifier = Modifier.size(36.dp)
-            )
+            if (!isDark) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(LightDpadDot)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowUp,
+                    contentDescription = "Up",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
 
-        // Down Chevron
+        // Down Directional Indicator (White dot in light mode, Chevron in dark mode)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .graphicsLayer {
-                    translationY = (-24).dp.toPx()
+                    translationY = if (!isDark) (-30).dp.toPx() else (-24).dp.toPx()
                     scaleX = downScale.value
                     scaleY = downScale.value
                 }
         ) {
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowDown,
-                contentDescription = "Down",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                modifier = Modifier.size(36.dp)
-            )
+            if (!isDark) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(LightDpadDot)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = "Down",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
 
-        // Left Chevron
+        // Left Directional Indicator (White dot in light mode, Chevron in dark mode)
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .graphicsLayer {
-                    translationX = 24.dp.toPx()
+                    translationX = if (!isDark) 30.dp.toPx() else 24.dp.toPx()
                     scaleX = leftScale.value
                     scaleY = leftScale.value
                 }
         ) {
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowLeft,
-                contentDescription = "Left",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                modifier = Modifier.size(36.dp)
-            )
+            if (!isDark) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(LightDpadDot)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowLeft,
+                    contentDescription = "Left",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
 
-        // Right Chevron
+        // Right Directional Indicator (White dot in light mode, Chevron in dark mode)
         Box(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .graphicsLayer {
-                    translationX = (-24).dp.toPx()
+                    translationX = if (!isDark) (-30).dp.toPx() else (-24).dp.toPx()
                     scaleX = rightScale.value
                     scaleY = rightScale.value
                 }
         ) {
-            Icon(
-                imageVector = Icons.Rounded.KeyboardArrowRight,
-                contentDescription = "Right",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
-                modifier = Modifier.size(36.dp)
-            )
+            if (!isDark) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(LightDpadDot)
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowRight,
+                    contentDescription = "Right",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
         }
 
-        // Center OK Disc (38% diameter, Accent Blue, 28sp semibold)
+        // Center OK Disc (38% diameter)
         val okDiameter = diameter * 0.38f
+        val okSurfaceBrush = if (!isDark) {
+            Brush.radialGradient(
+                listOf(LightDpadOkCenter, LightDpadOkSurface)
+            )
+        } else {
+            SolidColor(AccentBlue)
+        }
+
         Box(
             modifier = Modifier
                 .size(okDiameter)
@@ -336,11 +395,15 @@ fun DpadDisc(
                 .shadow(
                     elevation = if (!isDark) 6.dp else 0.dp,
                     shape = CircleShape,
-                    ambientColor = AccentBlue.copy(alpha = 0.2f),
-                    spotColor = AccentBlue.copy(alpha = 0.3f)
+                    ambientColor = if (!isDark) Color.Black.copy(alpha = 0.25f) else AccentBlue.copy(alpha = 0.2f),
+                    spotColor = if (!isDark) Color.Black.copy(alpha = 0.35f) else AccentBlue.copy(alpha = 0.3f)
                 )
                 .clip(CircleShape)
-                .background(AccentBlue)
+                .background(okSurfaceBrush)
+                .then(
+                    if (!isDark) Modifier.border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+                    else Modifier
+                )
                 .testTag("key_ok")
                 .semantics {
                     role = Role.Button
@@ -351,7 +414,7 @@ fun DpadDisc(
             Text(
                 text = "OK",
                 style = MaterialTheme.typography.headlineLarge,
-                color = Color.White
+                color = if (!isDark) Color(0xFFEAEAEA) else Color.White
             )
         }
     }

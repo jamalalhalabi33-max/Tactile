@@ -17,6 +17,11 @@ import com.example.storage.TvStorage
 import com.example.ui.TactileScreen
 import com.example.ui.theme.TactileTheme
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var storage: TvStorage
@@ -40,10 +45,17 @@ class MainActivity : ComponentActivity() {
         remoteManager = RemoteManager(applicationContext, storage)
 
         setContent {
-            TactileTheme {
+            val isDark by storage.isDarkThemeFlow.collectAsState(initial = true)
+            TactileTheme(darkTheme = isDark) {
                 TactileScreen(
                     remoteManager = remoteManager,
-                    discoveryManager = discoveryManager
+                    discoveryManager = discoveryManager,
+                    isDarkTheme = isDark,
+                    onToggleTheme = {
+                        lifecycleScope.launch {
+                            storage.setDarkTheme(!isDark)
+                        }
+                    }
                 )
             }
         }

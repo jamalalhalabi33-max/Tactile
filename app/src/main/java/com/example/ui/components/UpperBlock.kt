@@ -51,6 +51,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+import com.example.ui.theme.LightButtonBase
+import com.example.ui.theme.LightButtonIcon
+import com.example.ui.theme.LocalThemeIsDark
+
 @Composable
 fun UpperBlock(
     onSendKey: (Key) -> Unit,
@@ -87,30 +91,32 @@ private fun BackKey(
     onSendKey: (Key) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalThemeIsDark.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val scale = remember { Animatable(1f) }
 
     val shape = RoundedCornerShape(40.dp)
+    val baseColor = if (!isDark) LightButtonBase else MaterialTheme.colorScheme.surface
+    val iconColor = if (!isDark) LightButtonIcon else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = modifier
             .shadow(
                 elevation = if (!isDark) 6.dp else 0.dp,
                 shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.06f),
-                spotColor = Color.Black.copy(alpha = 0.10f)
+                ambientColor = Color.Black.copy(alpha = 0.2f),
+                spotColor = Color.Black.copy(alpha = 0.25f)
             )
             .graphicsLayer {
                 scaleX = scale.value
                 scaleY = scale.value
             }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(baseColor)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, shape)
-                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, shape)
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), shape)
             )
             .testTag("key_back")
             .semantics {
@@ -156,7 +162,7 @@ private fun BackKey(
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = iconColor,
             modifier = Modifier.graphicsLayer {
                 scaleX = 1.3f
                 scaleY = 1.3f
@@ -170,22 +176,24 @@ private fun VolumePill(
     onSendKey: (Key) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalThemeIsDark.current
     val shape = RoundedCornerShape(40.dp)
+    val baseColor = if (!isDark) LightButtonBase else MaterialTheme.colorScheme.surface
+    val iconColor = if (!isDark) LightButtonIcon else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = modifier
             .shadow(
                 elevation = if (!isDark) 6.dp else 0.dp,
                 shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.06f),
-                spotColor = Color.Black.copy(alpha = 0.10f)
+                ambientColor = Color.Black.copy(alpha = 0.2f),
+                spotColor = Color.Black.copy(alpha = 0.25f)
             )
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(baseColor)
             .then(
                 if (isDark) Modifier.border(1.dp, DarkBorder, shape)
-                else Modifier.border(1.dp, com.example.ui.theme.LightBorder, shape)
+                else Modifier.border(1.dp, Color.White.copy(alpha = 0.12f), shape)
             )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -203,7 +211,7 @@ private fun VolumePill(
                 Icon(
                     imageVector = Icons.Rounded.Add,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = iconColor
                 )
             }
 
@@ -222,7 +230,7 @@ private fun VolumePill(
                 Icon(
                     imageVector = Icons.Rounded.VolumeOff,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    tint = if (!isDark) iconColor.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
 
@@ -240,7 +248,7 @@ private fun VolumePill(
                 Icon(
                     imageVector = Icons.Rounded.Remove,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = iconColor
                 )
             }
         }

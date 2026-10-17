@@ -152,7 +152,17 @@ class AndroidTvController(
                     shift += 7
                 }
 
-                if (fieldNum == 8) { // remote_ping_request
+                if (fieldNum == 1) { // remote_configure
+                    val resp = ProtobufWire.encodeRemoteConfigure()
+                    synchronized(out) {
+                        ProtobufWire.writeFramedMessage(out, resp)
+                    }
+                } else if (fieldNum == 2) { // remote_set_active
+                    val resp = ProtobufWire.encodeRemoteSetActive(622)
+                    synchronized(out) {
+                        ProtobufWire.writeFramedMessage(out, resp)
+                    }
+                } else if (fieldNum == 8) { // remote_ping_request
                     var val1 = 1
                     if (len >= 2 && (frame[i].toInt() and 0x07) == 0) {
                         val1 = frame[i + 1].toInt()
@@ -522,10 +532,13 @@ class AndroidTvController(
 
     override fun sendText(text: String) {
         val out = commandOut ?: return
+        if (text.isEmpty()) return
+        val currentIme = imeCounter.getAndIncrement()
+        val currentField = fieldCounter.get().let { if (it <= 0) 1 else it }
         val batchEdit = ProtobufWire.encodeRemoteImeBatchEdit(
             text = text,
-            imeCounter = imeCounter.getAndIncrement(),
-            fieldCounter = fieldCounter.get()
+            imeCounter = currentIme,
+            fieldCounter = currentField
         )
         synchronized(out) {
             try {

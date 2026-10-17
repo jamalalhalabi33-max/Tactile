@@ -69,7 +69,7 @@ fun TvKeyboardInput(
     remoteManager: RemoteManager,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = com.example.ui.theme.LocalThemeIsDark.current
     val session by remoteManager.keyboardSession.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
@@ -233,7 +233,9 @@ fun TvKeyboardInput(
                         focusedBorderColor = AccentBlue,
                         unfocusedBorderColor = if (isDark) DarkBorder else LightBorder,
                         focusedContainerColor = MaterialTheme.colorScheme.background,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.background
+                        unfocusedContainerColor = MaterialTheme.colorScheme.background,
+                        focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onBackground
                     ),
                     trailingIcon = {
                         IconButton(

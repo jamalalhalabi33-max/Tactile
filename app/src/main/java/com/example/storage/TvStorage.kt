@@ -3,6 +3,7 @@ package com.example.storage
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,6 +22,17 @@ class TvStorage(private val context: Context) {
     private val keySavedDevices = stringPreferencesKey("saved_devices_json")
     private val keyAtvCert = stringPreferencesKey("atv_client_cert_der")
     private val keyAtvKey = stringPreferencesKey("atv_client_key_der")
+    private val keyIsDarkTheme = booleanPreferencesKey("manual_is_dark_theme")
+
+    val isDarkThemeFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[keyIsDarkTheme] ?: true
+    }
+
+    suspend fun setDarkTheme(isDark: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[keyIsDarkTheme] = isDark
+        }
+    }
 
     val savedDevicesFlow: Flow<List<TvDevice>> = context.dataStore.data.map { preferences ->
         val jsonStr = preferences[keySavedDevices] ?: "[]"
