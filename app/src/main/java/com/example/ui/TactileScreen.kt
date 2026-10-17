@@ -99,10 +99,13 @@ fun TactileScreen(
         }
     }
 
-    // Auto-open devices sheet if no TV saved after initial check
+    var hasAutoOpened by remember { mutableStateOf(false) }
+
+    // Auto-open devices sheet if no TV saved after initial check (only once on initial load)
     LaunchedEffect(savedDevices) {
-        delay(400)
-        if (savedDevices.isEmpty() && currentDevice == null) {
+        if (!hasAutoOpened && savedDevices.isEmpty() && currentDevice == null) {
+            hasAutoOpened = true
+            delay(400)
             showDevicesSheet = true
             keepFullScreen()
         }
@@ -318,17 +321,16 @@ fun TactileScreen(
             Spacer(modifier = Modifier.weight(0.08f))
         }
 
-        // Devices Sheet
-        if (showDevicesSheet) {
-            DevicesSheet(
-                discoveryManager = discoveryManager,
-                remoteManager = remoteManager,
-                onDismiss = {
-                    showDevicesSheet = false
-                    keepFullScreen()
-                }
-            )
-        }
+        // Devices Sheet (reworked in-app animated overlay)
+        DevicesSheet(
+            visible = showDevicesSheet,
+            discoveryManager = discoveryManager,
+            remoteManager = remoteManager,
+            onDismiss = {
+                showDevicesSheet = false
+                keepFullScreen()
+            }
+        )
 
         // Automatic & manual TV Keyboard Input Bar
         TvKeyboardInput(
