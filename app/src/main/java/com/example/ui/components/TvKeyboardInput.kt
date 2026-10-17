@@ -63,6 +63,7 @@ import com.example.remote.RemoteManager
 import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.LightBorder
+import kotlinx.coroutines.delay
 
 @Composable
 fun TvKeyboardInput(
@@ -77,10 +78,11 @@ fun TvKeyboardInput(
     var textState by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
 
-    LaunchedEffect(session.isActive, session.initialText) {
+    LaunchedEffect(session.isActive) {
         if (session.isActive) {
             textState = session.initialText
             isSubmitting = false
+            delay(50)
             focusRequester.requestFocus()
             keyboardController?.show()
         } else {

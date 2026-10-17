@@ -83,6 +83,8 @@ import com.example.model.TvDevice
 import com.example.remote.RemoteManager
 import com.example.ui.theme.AccentBlue
 import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.LightButtonBase
+import com.example.ui.theme.LightButtonIcon
 import com.example.ui.theme.StatusConnected
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -648,11 +650,14 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
                 val char = codeText.getOrNull(i)?.toString() ?: ""
                 val isFocused = codeText.length == i || (codeText.length == 6 && i == 5)
 
+                val isDark = com.example.ui.theme.LocalThemeIsDark.current
+                val boxBg = if (isDark) MaterialTheme.colorScheme.background else LightButtonBase
+
                 Box(
                     modifier = Modifier
                         .size(width = 46.dp, height = 54.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(boxBg)
                         .border(
                             width = if (isFocused) 2.dp else 1.dp,
                             color = if (isFocused) AccentBlue else Color.Gray.copy(alpha = 0.3f),
@@ -663,7 +668,7 @@ private fun AndroidTvCodeBoxes(onSubmit: (String) -> Unit) {
                     Text(
                         text = char,
                         style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isDark) MaterialTheme.colorScheme.onSurface else LightButtonIcon
                     )
                 }
             }

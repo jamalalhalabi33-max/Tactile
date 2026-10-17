@@ -171,7 +171,7 @@ fun TactileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    top = statusBarPadding + 16.dp,
+                    top = statusBarPadding + 28.dp,
                     bottom = 20.dp,
                     start = 20.dp,
                     end = 20.dp
