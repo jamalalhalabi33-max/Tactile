@@ -215,55 +215,57 @@ fun DpadDisc(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Draw the 4 wedge accent highlights without drawing wedge dividers
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val d = size.width
-            val r = d / 2f
-            val arcSize = Size(d, d)
+        // Draw the 4 wedge accent highlights without drawing wedge dividers (Dark theme only)
+        if (isDark) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val d = size.width
+                val r = d / 2f
+                val arcSize = Size(d, d)
 
-            // Right: -45 deg for 90 deg
-            if (rightAlpha.value > 0f) {
-                drawArc(
-                    color = AccentBlue.copy(alpha = rightAlpha.value),
-                    startAngle = -45f,
-                    sweepAngle = 90f,
-                    useCenter = true,
-                    size = arcSize,
-                    topLeft = Offset.Zero
-                )
-            }
-            // Down: 45 deg for 90 deg
-            if (downAlpha.value > 0f) {
-                drawArc(
-                    color = AccentBlue.copy(alpha = downAlpha.value),
-                    startAngle = 45f,
-                    sweepAngle = 90f,
-                    useCenter = true,
-                    size = arcSize,
-                    topLeft = Offset.Zero
-                )
-            }
-            // Left: 135 deg for 90 deg
-            if (leftAlpha.value > 0f) {
-                drawArc(
-                    color = AccentBlue.copy(alpha = leftAlpha.value),
-                    startAngle = 135f,
-                    sweepAngle = 90f,
-                    useCenter = true,
-                    size = arcSize,
-                    topLeft = Offset.Zero
-                )
-            }
-            // Up: 225 deg for 90 deg
-            if (upAlpha.value > 0f) {
-                drawArc(
-                    color = AccentBlue.copy(alpha = upAlpha.value),
-                    startAngle = 225f,
-                    sweepAngle = 90f,
-                    useCenter = true,
-                    size = arcSize,
-                    topLeft = Offset.Zero
-                )
+                // Right: -45 deg for 90 deg
+                if (rightAlpha.value > 0f) {
+                    drawArc(
+                        color = AccentBlue.copy(alpha = rightAlpha.value),
+                        startAngle = -45f,
+                        sweepAngle = 90f,
+                        useCenter = true,
+                        size = arcSize,
+                        topLeft = Offset.Zero
+                    )
+                }
+                // Down: 45 deg for 90 deg
+                if (downAlpha.value > 0f) {
+                    drawArc(
+                        color = AccentBlue.copy(alpha = downAlpha.value),
+                        startAngle = 45f,
+                        sweepAngle = 90f,
+                        useCenter = true,
+                        size = arcSize,
+                        topLeft = Offset.Zero
+                    )
+                }
+                // Left: 135 deg for 90 deg
+                if (leftAlpha.value > 0f) {
+                    drawArc(
+                        color = AccentBlue.copy(alpha = leftAlpha.value),
+                        startAngle = 135f,
+                        sweepAngle = 90f,
+                        useCenter = true,
+                        size = arcSize,
+                        topLeft = Offset.Zero
+                    )
+                }
+                // Up: 225 deg for 90 deg
+                if (upAlpha.value > 0f) {
+                    drawArc(
+                        color = AccentBlue.copy(alpha = upAlpha.value),
+                        startAngle = 225f,
+                        sweepAngle = 90f,
+                        useCenter = true,
+                        size = arcSize,
+                        topLeft = Offset.Zero
+                    )
+                }
             }
         }
 
@@ -411,11 +413,13 @@ fun DpadDisc(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "OK",
-                style = MaterialTheme.typography.headlineLarge,
-                color = if (!isDark) Color(0xFFEAEAEA) else Color.White
-            )
+            if (isDark) {
+                Text(
+                    text = "OK",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = Color.White
+                )
+            }
         }
     }
 }
